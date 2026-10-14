@@ -1,5 +1,11 @@
 import { useState } from 'react';
-import { AffordabilityInputs, DEFAULT_AFFORDABILITY_INPUTS } from '../types/affordability';
+import {
+  AffordabilityInputs,
+  DEFAULT_AFFORDABILITY_INPUTS,
+  ILLUSTRATIVE_DSR_CAP,
+  AFFORDABILITY_ASSUMPTIONS,
+} from '../types/affordability';
+import { calculateMortgageBudget } from '../utils/dsr';
 import './AffordabilityForm.css';
 
 interface AffordabilityFormProps {
@@ -18,6 +24,7 @@ interface FormErrors {
 export default function AffordabilityForm({ onSubmit }: AffordabilityFormProps) {
   const [formData, setFormData] = useState<AffordabilityInputs>(DEFAULT_AFFORDABILITY_INPUTS);
   const [errors, setErrors] = useState<FormErrors>({});
+  const [warnings, setWarnings] = useState<FormErrors>({});
   const [submitted, setSubmitted] = useState(false);
 
   const locations = [
@@ -53,6 +60,36 @@ export default function AffordabilityForm({ onSubmit }: AffordabilityFormProps) 
     return errs;
   }
 
+  /**
+   * Non-blocking guidance. A preferred payment above the repayment budget still
+   * works, but the calculated budget is what actually limits results, so say so
+   * instead of letting the user believe the higher figure applies.
+   */
+  function collectWarnings(data: AffordabilityInputs): FormErrors {
+    const warns: FormErrors = {};
+    const preferred = data.preferredMaxMonthlyPayment ?? 0;
+
+    if (preferred > 0 && data.monthlyIncome > 0) {
+      const budget = calculateMortgageBudget(
+        data.monthlyIncome,
+        data.monthlyDebts,
+        ILLUSTRATIVE_DSR_CAP
+      );
+      if (budget <= 0) {
+        warns.preferredMaxMonthlyPayment =
+          `Your existing commitments already use the full ${ILLUSTRATIVE_DSR_CAP}% debt-service ` +
+          `assumption, so no new mortgage fits under these assumptions.`;
+      } else if (preferred > budget) {
+        warns.preferredMaxMonthlyPayment =
+          `Higher than your estimated budget of about RM ${Math.round(budget).toLocaleString('en-MY')} ` +
+          `per month (${ILLUSTRATIVE_DSR_CAP}% of income minus existing commitments). ` +
+          `The lower figure will be used.`;
+      }
+    }
+
+    return warns;
+  }
+
   function handleChange(field: keyof AffordabilityInputs, value: string) {
     const numValue = value === '' ? 0 : parseFloat(value);
     if (isNaN(numValue)) return;
@@ -62,6 +99,7 @@ export default function AffordabilityForm({ onSubmit }: AffordabilityFormProps) 
     // Clear error for this field on change
     if (submitted) {
       setErrors((prev) => ({ ...prev, [field]: undefined }));
+      setWarnings((prev) => ({ ...prev, [field]: undefined }));
     }
   }
 
@@ -86,6 +124,7 @@ export default function AffordabilityForm({ onSubmit }: AffordabilityFormProps) 
 
     const validationErrors = validate(formData);
     setErrors(validationErrors);
+    setWarnings(collectWarnings(formData));
 
     if (Object.keys(validationErrors).length === 0) {
       onSubmit(formData);
@@ -160,8 +199,11 @@ export default function AffordabilityForm({ onSubmit }: AffordabilityFormProps) 
                 Available Down Payment (RM)
               </label>
               <span className="form-helper">
-                How much cash you have available for a down payment. Most conventional
-                loans require at least 10% of the property price.
+                Cash you actually have available for the down payment. We use this amount
+                directly — we do not assume you can cover the{' '}
+                {AFFORDABILITY_ASSUMPTIONS.downPaymentPercent}% requirement regardless. If it
+                falls short of {AFFORDABILITY_ASSUMPTIONS.downPaymentPercent}% of a property's
+                price, we will show that shortfall instead of hiding it.
               </span>
               <input
                 id="downPayment"
@@ -246,7 +288,9 @@ export default function AffordabilityForm({ onSubmit }: AffordabilityFormProps) 
               <input
                 id="preferredMaxMonthlyPayment"
                 type="number"
-                className={`form-input ${errors.preferredMaxMonthlyPayment ? 'form-input--error' : ''}`}
+                className={`form-input ${
+                  errors.preferredMaxMonthlyPayment ? 'form-input--error' : ''
+                }`}
                 placeholder="e.g. 2000"
                 value={inputValue(formData.preferredMaxMonthlyPayment)}
                 onChange={(e) => handleChange('preferredMaxMonthlyPayment', e.target.value)}
@@ -256,6 +300,9 @@ export default function AffordabilityForm({ onSubmit }: AffordabilityFormProps) 
               {errors.preferredMaxMonthlyPayment && (
                 <p className="form-error">{errors.preferredMaxMonthlyPayment}</p>
               )}
+              {!errors.preferredMaxMonthlyPayment && warnings.preferredMaxMonthlyPayment && (
+                <p className="form-warning">{warnings.preferredMaxMonthlyPayment}</p>
+              )}
             </div>
 
             <div className="af-form__row">
@@ -264,7 +311,8 @@ export default function AffordabilityForm({ onSubmit }: AffordabilityFormProps) 
                   Preferred Location
                 </label>
                 <span className="form-helper">
-                  Filter properties to a specific area.
+                  Filters the property list to this area (case-insensitive, matches any part of
+                  the address).
                 </span>
                 <select
                   id="preferredLocation"
@@ -284,7 +332,8 @@ export default function AffordabilityForm({ onSubmit }: AffordabilityFormProps) 
                   Minimum Bedrooms
                 </label>
                 <span className="form-helper">
-                  Minimum number of bedrooms you need.
+                  Filters the property list. Properties with an unknown bedroom count are
+                  excluded while this is set, and we will tell you how many.
                 </span>
                 <select
                   id="minBedrooms"

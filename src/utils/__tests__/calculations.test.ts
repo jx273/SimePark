@@ -99,8 +99,9 @@ describe('formatMYR', () => {
     expect(formatMYR(0)).toBe('RM 0');
   });
 
-  it('should handle Infinity', () => {
-    expect(formatMYR(Infinity)).toBe('RM 0');
+  it('should handle non-finite values without pretending they are zero', () => {
+    expect(formatMYR(Infinity)).toBe('RM —');
+    expect(formatMYR(NaN)).toBe('RM —');
   });
 });
 
@@ -362,5 +363,29 @@ describe('Property filtering and ranking', () => {
 
     expect(sorted[0].priceMYR).toBeGreaterThanOrEqual(sorted[1].priceMYR);
     expect(sorted[1].priceMYR).toBeGreaterThanOrEqual(sorted[2].priceMYR);
+  });
+
+  it('should never mark a property affordable when the down payment is not covered', () => {
+    const result = calculateAffordability(inputs);
+    const enriched = enrichPropertiesWithCalculations(sampleProperties, inputs, result);
+
+    enriched.forEach((p) => {
+      if (p.isAffordable) {
+        expect(p.cashShortfall).toBe(0);
+        expect(p.requiredDownPayment).toBeLessThanOrEqual(inputs.downPayment);
+      } else {
+        expect(p.budgetStatus === 'overMonthlyBudget' || p.budgetStatus === 'insufficientDownPayment').toBe(true);
+      }
+    });
+  });
+
+  it('should price the cash constraint into the maximum property price', () => {
+    // Income supports a larger loan, but RM 40,000 cash only covers a 10% down
+    // payment up to RM 400,000.
+    const result = calculateAffordability(inputs);
+
+    expect(result.maxPropertyPriceByRepayment).toBeGreaterThan(400000);
+    expect(result.estimatedMaxPropertyPrice).toBe(400000);
+    expect(result.limitingFactor).toBe('downPayment');
   });
 });

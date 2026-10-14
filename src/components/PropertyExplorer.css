@@ -43,6 +43,36 @@
   margin-bottom: var(--space-lg);
 }
 
+/* Row explaining which preference filters are active, with a reset control */
+.explorer__active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  margin: calc(-1 * var(--space-md)) 0 var(--space-lg);
+  padding: var(--space-sm) var(--space-md);
+  background-color: var(--color-primary-pale);
+  border-radius: var(--border-radius);
+}
+
+.explorer__active-filters-text {
+  font-size: var(--font-size-sm);
+  color: var(--color-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+/* Explains properties hidden because their bedroom count is unknown */
+.explorer__note {
+  margin-bottom: var(--space-lg);
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  background-color: var(--color-bg-section);
+  border-left: 3px solid var(--color-accent-light);
+  border-radius: var(--border-radius-sm);
+}
+
 .explorer__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));

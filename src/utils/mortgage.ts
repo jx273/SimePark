@@ -13,7 +13,20 @@
  */
 
 /**
+ * Coerce an unknown number-like value into a usable finite number.
+ * Returns 0 for NaN, Infinity, null, undefined, and non-numeric strings so that
+ * bad input degrades to "nothing affordable" instead of poisoning every
+ * downstream comparison with NaN.
+ */
+export function toFiniteNumber(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
  * Calculate the monthly mortgage payment using standard fixed-rate amortization.
+ *
+ * Non-finite inputs (NaN/Infinity) are treated as invalid and yield 0.
  *
  * @param principal - Loan principal in MYR (must be >= 0)
  * @param annualInterestRate - Annual interest rate as percentage (e.g., 4.0 = 4%)
@@ -26,7 +39,14 @@ export function calculateMonthlyMortgage(
   tenureYears: number
 ): number {
   // Guard against invalid inputs
-  if (principal <= 0 || tenureYears <= 0 || annualInterestRate < 0) {
+  if (
+    !Number.isFinite(principal) ||
+    !Number.isFinite(annualInterestRate) ||
+    !Number.isFinite(tenureYears) ||
+    principal <= 0 ||
+    tenureYears <= 0 ||
+    annualInterestRate < 0
+  ) {
     return 0;
   }
 
@@ -60,7 +80,14 @@ export function calculateMaxLoanPrincipal(
   annualInterestRate: number,
   tenureYears: number
 ): number {
-  if (monthlyPayment <= 0 || tenureYears <= 0 || annualInterestRate < 0) {
+  if (
+    !Number.isFinite(monthlyPayment) ||
+    !Number.isFinite(annualInterestRate) ||
+    !Number.isFinite(tenureYears) ||
+    monthlyPayment <= 0 ||
+    tenureYears <= 0 ||
+    annualInterestRate < 0
+  ) {
     return 0;
   }
 
@@ -88,7 +115,12 @@ export function calculateDownPayment(
   propertyPrice: number,
   downPaymentPercentage: number
 ): number {
-  if (propertyPrice <= 0 || downPaymentPercentage < 0) {
+  if (
+    !Number.isFinite(propertyPrice) ||
+    !Number.isFinite(downPaymentPercentage) ||
+    propertyPrice <= 0 ||
+    downPaymentPercentage < 0
+  ) {
     return 0;
   }
   return propertyPrice * (downPaymentPercentage / 100);
@@ -96,18 +128,20 @@ export function calculateDownPayment(
 
 /**
  * Format a number as MYR currency string.
+ * Non-finite values are surfaced as "RM —" rather than "RM 0" so a failed
+ * calculation is never mistaken for a real zero.
  * Example: 450000 → "RM 450,000"
  */
 export function formatMYR(amount: number): string {
-  if (!isFinite(amount)) return 'RM 0';
+  if (!Number.isFinite(amount)) return 'RM —';
   return `RM ${Math.round(amount).toLocaleString('en-MY')}`;
 }
 
 /**
- * Format a percentage value.
+ * Format a percentage value. Non-finite values are surfaced as "—".
  * Example: 35.5 → "35.5%"
  */
 export function formatPercentage(value: number, decimals: number = 1): string {
-  if (!isFinite(value)) return '0%';
+  if (!Number.isFinite(value)) return '—';
   return `${value.toFixed(decimals)}%`;
 }

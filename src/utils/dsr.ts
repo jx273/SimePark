@@ -23,11 +23,13 @@ export function calculateDSR(
   totalMonthlyDebts: number,
   monthlyIncome: number
 ): number {
-  // Guard against division by zero
-  if (monthlyIncome <= 0) {
-    return 0;
-  }
-  if (totalMonthlyDebts < 0) {
+  // Guard against division by zero and non-finite input
+  if (
+    !Number.isFinite(monthlyIncome) ||
+    !Number.isFinite(totalMonthlyDebts) ||
+    monthlyIncome <= 0 ||
+    totalMonthlyDebts < 0
+  ) {
     return 0;
   }
   return (totalMonthlyDebts / monthlyIncome) * 100;
@@ -52,7 +54,13 @@ export function calculateMortgageBudget(
   existingMonthlyDebts: number,
   dsrCap: number = ILLUSTRATIVE_DSR_CAP
 ): number {
-  if (monthlyIncome <= 0 || dsrCap <= 0) {
+  if (
+    !Number.isFinite(monthlyIncome) ||
+    !Number.isFinite(existingMonthlyDebts) ||
+    !Number.isFinite(dsrCap) ||
+    monthlyIncome <= 0 ||
+    dsrCap <= 0
+  ) {
     return 0;
   }
 
@@ -70,6 +78,32 @@ export function calculateMaxTotalDebtBudget(
   monthlyIncome: number,
   dsrCap: number = ILLUSTRATIVE_DSR_CAP
 ): number {
+  if (!Number.isFinite(monthlyIncome) || !Number.isFinite(dsrCap)) return 0;
   if (monthlyIncome <= 0 || dsrCap <= 0) return 0;
   return monthlyIncome * (dsrCap / 100);
+}
+
+/**
+ * Largest property price whose required down payment is covered by cash.
+ *
+ * With a required down payment of P% of the price:
+ *   cash >= price * P/100   =>   price <= cash / (P/100)
+ *
+ * @param availableCash - Cash the user has available in MYR
+ * @param downPaymentPercentage - Required down payment as a % of price (e.g. 10)
+ * @returns Maximum property price in MYR (0 if cash or percentage is not usable)
+ */
+export function calculateMaxPriceByCash(
+  availableCash: number,
+  downPaymentPercentage: number
+): number {
+  if (
+    !Number.isFinite(availableCash) ||
+    !Number.isFinite(downPaymentPercentage) ||
+    availableCash <= 0 ||
+    downPaymentPercentage <= 0
+  ) {
+    return 0;
+  }
+  return availableCash / (downPaymentPercentage / 100);
 }

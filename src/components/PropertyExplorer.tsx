@@ -1,26 +1,53 @@
 import { useState } from 'react';
 import { PropertyWithCalculations } from '../types/property';
-import { PropertyFilters, SortOption, DEFAULT_FILTERS, filterProperties, sortProperties } from '../utils/propertyFilter';
+import { AffordabilityInputs } from '../types/affordability';
+import {
+  PropertyFilters,
+  SortOption,
+  DEFAULT_FILTERS,
+  filtersFromPreferences,
+  filterPropertiesWithMeta,
+  sortProperties,
+} from '../utils/propertyFilter';
 import PropertyCard from './PropertyCard';
 import './PropertyExplorer.css';
 
 interface PropertyExplorerProps {
   properties: PropertyWithCalculations[];
+  /** Preferences submitted with the affordability form, used to seed filters */
+  preferences?: AffordabilityInputs | null;
   onViewDetails: (property: PropertyWithCalculations) => void;
 }
 
-export default function PropertyExplorer({ properties, onViewDetails }: PropertyExplorerProps) {
-  const [filters, setFilters] = useState<PropertyFilters>(DEFAULT_FILTERS);
+export default function PropertyExplorer({
+  properties,
+  preferences,
+  onViewDetails,
+}: PropertyExplorerProps) {
+  // Seed with the preferences from the form so a chosen location and minimum
+  // bedrooms actually filter the list, not just the match score.
+  const [filters, setFilters] = useState<PropertyFilters>(() =>
+    filtersFromPreferences(preferences)
+  );
   const [sortBy, setSortBy] = useState<SortOption>('match');
 
   // Extract unique locations and property types for filter dropdowns
   const locations = ['All', ...Array.from(new Set(properties.map((p) => p.location))).sort()];
   const propertyTypes = ['All', ...Array.from(new Set(properties.map((p) => p.propertyType))).sort()];
 
-  const filteredProperties = sortProperties(
-    filterProperties(properties, filters),
-    sortBy
+  const { properties: matchingProperties, hiddenUnknownBedrooms } = filterPropertiesWithMeta(
+    properties,
+    filters
   );
+
+  const filteredProperties = sortProperties(matchingProperties, sortBy);
+
+  const hasActiveFilters =
+    filters.location !== DEFAULT_FILTERS.location ||
+    filters.propertyType !== DEFAULT_FILTERS.propertyType ||
+    filters.minBedrooms !== DEFAULT_FILTERS.minBedrooms ||
+    filters.maxPrice !== DEFAULT_FILTERS.maxPrice ||
+    filters.affordableOnly !== DEFAULT_FILTERS.affordableOnly;
 
   const handleFilterChange = (key: keyof PropertyFilters, value: string | number | boolean) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -31,7 +58,8 @@ export default function PropertyExplorer({ properties, onViewDetails }: Property
       <div className="container">
         <h2 className="section__title">Explore Properties</h2>
         <p className="section__subtitle">
-          Properties ranked by how well they match your estimated budget and preferences.
+          Properties are filtered by the location and bedrooms you selected, and ranked by how
+          well they match your estimated budget.
         </p>
 
         {/* Filters */}
@@ -126,6 +154,30 @@ export default function PropertyExplorer({ properties, onViewDetails }: Property
         <p className="explorer__count">
           Showing {filteredProperties.length} of {properties.length} properties
         </p>
+
+        {hasActiveFilters && (
+          <div className="explorer__active-filters">
+            <span className="explorer__active-filters-text">
+              Filters applied from your preferences
+              {filters.location !== DEFAULT_FILTERS.location && ` · ${filters.location}`}
+              {filters.minBedrooms > 0 && ` · ${filters.minBedrooms}+ bedrooms`}
+            </span>
+            <button
+              className="btn btn--secondary"
+              onClick={() => setFilters(DEFAULT_FILTERS)}
+            >
+              Reset Filters
+            </button>
+          </div>
+        )}
+
+        {hiddenUnknownBedrooms > 0 && (
+          <p className="explorer__note">
+            {hiddenUnknownBedrooms} propert{hiddenUnknownBedrooms === 1 ? 'y was' : 'ies were'}{' '}
+            hidden because the bedroom count is unknown and your minimum-bedroom filter is
+            active. Clear the bedroom filter to see them.
+          </p>
+        )}
 
         {/* Property grid */}
         {filteredProperties.length > 0 ? (

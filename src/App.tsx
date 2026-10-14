@@ -65,7 +65,10 @@ export default function App() {
 
         {enrichedProperties.length > 0 && (
           <PropertyExplorer
+            // Re-seed the explorer filters whenever new preferences are submitted
+            key={`explorer-${userInputs?.preferredLocation ?? 'any'}-${userInputs?.minBedrooms ?? 0}`}
             properties={enrichedProperties}
+            preferences={userInputs}
             onViewDetails={setSelectedProperty}
           />
         )}

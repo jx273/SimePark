@@ -285,6 +285,14 @@ input, select {
   margin-top: var(--space-xs);
 }
 
+/* Non-blocking guidance, e.g. a preferred payment above the calculated budget */
+.form-warning {
+  color: #9A5B14;
+  font-size: var(--font-size-xs);
+  margin-top: var(--space-xs);
+  line-height: var(--line-height-normal);
+}
+
 .form-select {
   width: 100%;
   padding: var(--space-md);
@@ -342,6 +350,13 @@ input, select {
 .badge--over-budget {
   background-color: #FDECEA;
   color: var(--color-error);
+}
+/* Repayment fits the monthly budget, but available cash is short of the
+   required down payment — a different problem from being over budget. */
+.badge--cash-short {
+  background-color: #FDF3E7;
+  color: #9A5B14;
+  border: 1px solid var(--color-accent-light);
 }
 .badge--type {
   background-color: var(--color-bg-section);

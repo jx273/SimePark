@@ -14,14 +14,14 @@ export default function HowItWorks() {
       icon: '🏠',
       title: 'Compare Matching Properties',
       description:
-        'Browse properties filtered and ranked by how well they fit your estimated budget. See estimated monthly payments, down payment requirements, and DSR for each.',
+        'Browse properties filtered by the location and bedrooms you chose, and ranked by how well they fit your estimated budget. Each one shows its estimated monthly payment, required down payment, whether your cash covers it, and its DSR.',
     },
     {
       number: '03',
       icon: '🔍',
       title: 'Review & Research',
       description:
-        'View detailed calculations for each property, understand the assumptions, and follow source links to original listings for further research.',
+        'View detailed calculations for each property, see exactly which limit is holding your budget back, understand the assumptions, and follow source links to original listings for further research.',
     },
   ];
 
