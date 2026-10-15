@@ -29,6 +29,24 @@ export interface AffordabilityInputs {
 export type AffordabilityLimitingFactor = 'repayment' | 'downPayment' | 'none';
 
 /**
+ * The single input that most constrains the estimated maximum property price.
+ *
+ * Distinct from `AffordabilityLimitingFactor` because a user-entered
+ * `preferredMaxMonthlyPayment` can be the binding constraint even though it does
+ * not change the repayment ceiling the user could theoretically service.
+ *
+ * - 'preferredMaxMonthlyPayment': the user's own monthly ceiling reduced the result
+ * - 'downPayment':               available cash caps the price
+ * - 'repayment':                 income minus commitments caps the repayment
+ * - 'none':                      no estimate was produced
+ */
+export type BindingConstraint =
+  | 'repayment'
+  | 'downPayment'
+  | 'preferredMaxMonthlyPayment'
+  | 'none';
+
+/**
  * Calculated affordability results.
  *
  * All monetary values are in MYR. These are illustrative planning estimates,
@@ -57,6 +75,13 @@ export interface AffordabilityResult {
   maxPropertyPriceByCash: number;
   /** Which of the two ceilings is binding */
   limitingFactor: AffordabilityLimitingFactor;
+  /**
+   * Which input is the overall binding constraint, accounting for a user-entered
+   * `preferredMaxMonthlyPayment` as well as the two ceilings. Exposed so
+   * dependent features (such as the AI assistant) can state what is really
+   * limiting the estimate instead of inferring it.
+   */
+  bindingConstraint: BindingConstraint;
   /**
    * False when no meaningful estimate is possible (no positive income, invalid
    * interest rate or tenure, or cash below the minimum required down payment).

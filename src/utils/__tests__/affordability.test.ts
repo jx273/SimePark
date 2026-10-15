@@ -193,6 +193,103 @@ describe('calculateAffordability — edge cases', () => {
   });
 });
 
+describe('calculateAffordability — which constraint is really binding', () => {
+  // All expectations below were taken from the app's own output, not assumed.
+
+  it('reports cash when cash caps the price and no preference was entered', () => {
+    // cash 50k: repayment ceiling 510,815 vs cash ceiling 500,000
+    const result = calculateAffordability({ ...baseInputs, downPayment: 50000 });
+
+    expect(result.limitingFactor).toBe('downPayment');
+    expect(result.bindingConstraint).toBe('downPayment');
+  });
+
+  it('reports repayment when income caps the price and cash is plentiful', () => {
+    // cash 200k: repayment ceiling 660,815 vs cash ceiling 2,000,000
+    const result = calculateAffordability({ ...baseInputs, downPayment: 200000 });
+
+    expect(result.limitingFactor).toBe('repayment');
+    expect(result.bindingConstraint).toBe('repayment');
+  });
+
+  it('names the preference when it lowers the ceiling below the cash ceiling', () => {
+    // cash 50k + preference 1,500: repayment ceiling drops to 364,192, which is
+    // now below the 500,000 the cash would otherwise allow. Before this fix the
+    // app blamed the cash for a limit the user's own preference created.
+    const result = calculateAffordability({
+      ...baseInputs,
+      downPayment: 50000,
+      preferredMaxMonthlyPayment: 1500,
+    });
+
+    expect(result.estimatedMortgageBudget).toBe(1500);
+    expect(result.bindingConstraint).toBe('preferredMaxMonthlyPayment');
+    expect(result.limitingFactor).toBe('repayment');
+    expect(result.maxPropertyPriceByRepayment).toBeLessThan(result.maxPropertyPriceByCash);
+  });
+
+  it('still names the preference at a higher setting that also binds', () => {
+    // cash 50k + preference 2,000: repayment ceiling 468,922 < cash 500,000
+    const result = calculateAffordability({
+      ...baseInputs,
+      downPayment: 50000,
+      preferredMaxMonthlyPayment: 2000,
+    });
+
+    expect(result.estimatedMortgageBudget).toBe(2000);
+    expect(result.bindingConstraint).toBe('preferredMaxMonthlyPayment');
+  });
+
+  it('reports cash when a preference is set but cash is still the real limit', () => {
+    // cash 50k + preference 3,000: the preference is above the app's calculated
+    // budget of 2,200, so it is ignored and cash remains the binding constraint.
+    // This is the exact misattribution the live assistant made.
+    const result = calculateAffordability({
+      ...baseInputs,
+      downPayment: 50000,
+      preferredMaxMonthlyPayment: 3000,
+    });
+
+    expect(result.estimatedMortgageBudget).toBe(2200);
+    expect(result.limitingFactor).toBe('downPayment');
+    expect(result.bindingConstraint).toBe('downPayment');
+    expect(result.bindingConstraint).not.toBe('preferredMaxMonthlyPayment');
+  });
+
+  it('reports repayment when a preference is set but income still caps the price', () => {
+    // cash 200k + preference 3,000: ignored, ceiling stays 660,815 vs 2,000,000
+    const result = calculateAffordability({
+      ...baseInputs,
+      downPayment: 200000,
+      preferredMaxMonthlyPayment: 3000,
+    });
+
+    expect(result.bindingConstraint).toBe('repayment');
+  });
+
+  it('reports the preference when cash is abundant but income is limited', () => {
+    // cash 200k + preference 1,500: ceiling 514,192 vs cash 2,000,000
+    const result = calculateAffordability({
+      ...baseInputs,
+      downPayment: 200000,
+      preferredMaxMonthlyPayment: 1500,
+    });
+
+    expect(result.bindingConstraint).toBe('preferredMaxMonthlyPayment');
+  });
+
+  it('reports none when no estimate could be produced', () => {
+    const result = calculateAffordability({
+      ...baseInputs,
+      monthlyIncome: 0,
+      preferredMaxMonthlyPayment: 1500,
+    });
+
+    expect(result.hasViableBudget).toBe(false);
+    expect(result.bindingConstraint).toBe('none');
+  });
+});
+
 describe('calculateMaxPriceByCash', () => {
   it('converts cash into a price ceiling at the required percentage', () => {
     expect(calculateMaxPriceByCash(50000, 10)).toBe(500000);

@@ -5,6 +5,7 @@ import AffordabilityForm from './components/AffordabilityForm';
 import AffordabilityResults from './components/AffordabilityResults';
 import PropertyExplorer from './components/PropertyExplorer';
 import PropertyModal from './components/PropertyModal';
+import AssistantChat from './components/AssistantChat';
 import HowItWorks from './components/HowItWorks';
 import Footer from './components/Footer';
 
@@ -72,6 +73,16 @@ export default function App() {
             onViewDetails={setSelectedProperty}
           />
         )}
+
+        {/* AI assistant: receives the same inputs, results and property records
+            the rest of the page is showing, so its answers stay grounded. */}
+        <AssistantChat
+          userInputs={userInputs}
+          affordabilityResult={affordabilityResult}
+          properties={enrichedProperties}
+          selectedProperty={selectedProperty}
+          onNavigate={scrollToSection}
+        />
 
         <HowItWorks />
       </main>

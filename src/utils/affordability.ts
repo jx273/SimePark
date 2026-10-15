@@ -34,6 +34,7 @@ import {
   AffordabilityInputs,
   AffordabilityResult,
   AffordabilityLimitingFactor,
+  BindingConstraint,
   ILLUSTRATIVE_DSR_CAP,
   REQUIRED_DOWN_PAYMENT_PERCENTAGE,
 } from '../types/affordability';
@@ -202,6 +203,26 @@ export function calculateAffordability(
         : 'repayment';
   }
 
+  // The overall binding constraint. A user-entered preferred monthly payment is
+  // checked first because it lowers the monthly budget, and therefore the
+  // repayment ceiling, before either ceiling is compared. Whether it is truly
+  // binding is decided by comparing the resulting price against the cash
+  // ceiling, so we never claim the user's preference limited a result that the
+  // down payment actually limited.
+  let bindingConstraint: BindingConstraint = 'none';
+  if (hasViableBudget) {
+    const userLimitIsActive =
+      preferredMaxMonthlyPayment > 0 &&
+      preferredMaxMonthlyPayment <
+        calculateMortgageBudget(monthlyIncome, monthlyDebts, ILLUSTRATIVE_DSR_CAP);
+
+    if (userLimitIsActive && maxPropertyPriceByRepayment <= maxPropertyPriceByCash) {
+      bindingConstraint = 'preferredMaxMonthlyPayment';
+    } else {
+      bindingConstraint = limitingFactor;
+    }
+  }
+
   // When there is no viable budget, every ceiling is reported as 0 rather than
   // leaking the cash amount into a figure that looks like a buying capacity.
   return {
@@ -214,6 +235,7 @@ export function calculateAffordability(
     maxPropertyPriceByRepayment: hasViableBudget ? maxPropertyPriceByRepayment : 0,
     maxPropertyPriceByCash: hasViableBudget ? maxPropertyPriceByCash : 0,
     limitingFactor,
+    bindingConstraint,
     hasViableBudget,
     limitedReason,
     cashApplied: hasViableBudget ? downPayment : 0,
