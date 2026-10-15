@@ -37,20 +37,39 @@ export type PropertyType =
   | 'Flat';
 
 /**
+ * Why a property does or does not fit the user's budget.
+ * - 'affordable': the estimated repayment fits the monthly budget and the
+ *   available cash covers the required down payment
+ * - 'overMonthlyBudget': the estimated repayment exceeds the monthly budget
+ * - 'insufficientDownPayment': the repayment fits, but available cash is short
+ *   of the required down payment
+ */
+export type PropertyBudgetStatus =
+  | 'affordable'
+  | 'overMonthlyBudget'
+  | 'insufficientDownPayment';
+
+/**
  * A property record enriched with affordability calculations
  * specific to the user's financial inputs.
  */
 export interface PropertyWithCalculations extends Property {
   /** Estimated monthly mortgage payment in MYR */
   estimatedMonthlyMortgage: number;
-  /** Required down payment in MYR (based on configured down payment percentage) */
+  /** Required down payment in MYR (property price x required down payment %) */
   requiredDownPayment: number;
-  /** Loan principal = price - down payment */
+  /** Cash actually applied to this property (never more than the price) */
+  downPaymentApplied: number;
+  /** How much more cash is needed to cover the required down payment (0 if covered) */
+  cashShortfall: number;
+  /** Loan principal = price - cash applied */
   loanPrincipal: number;
   /** Estimated DSR (%) including this property's mortgage */
   estimatedDSR: number;
-  /** Whether this property is within the user's budget */
+  /** Whether this property is within the user's budget (repayment AND down payment) */
   isAffordable: boolean;
+  /** Which constraint fails, for display purposes */
+  budgetStatus: PropertyBudgetStatus;
   /** Simple match score (0-100) for ranking */
   matchScore: number;
   /** Human-readable explanation of why this property matches or doesn't */

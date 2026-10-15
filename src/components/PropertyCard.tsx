@@ -1,5 +1,7 @@
 import { PropertyWithCalculations } from '../types/property';
 import { formatMYR, formatPercentage } from '../utils/mortgage';
+import { ILLUSTRATIVE_DSR_CAP } from '../types/affordability';
+import BudgetBadge from './BudgetBadge';
 import './PropertyCard.css';
 
 interface PropertyCardProps {
@@ -23,9 +25,7 @@ export default function PropertyCard({ property, onViewDetails }: PropertyCardPr
             <h3 className="property-card__name">{property.propertyName}</h3>
             <p className="property-card__location">📍 {property.location}</p>
           </div>
-          <span className={`badge ${property.isAffordable ? 'badge--affordable' : 'badge--over-budget'}`}>
-            {property.isAffordable ? '✓ Within Budget' : 'Over Budget'}
-          </span>
+          <BudgetBadge property={property} />
         </div>
 
         <p className="property-card__price">{formatMYR(property.priceMYR)}</p>
@@ -57,9 +57,23 @@ export default function PropertyCard({ property, onViewDetails }: PropertyCardPr
             </span>
           </div>
           <div className="property-card__finance-item">
+            <span className="property-card__finance-label">Your Cash</span>
+            <span
+              className={`property-card__finance-value ${
+                property.cashShortfall > 0 ? 'property-card__finance-value--warning' : ''
+              }`}
+            >
+              {property.cashShortfall > 0
+                ? `Short ${formatMYR(property.cashShortfall)}`
+                : formatMYR(property.downPaymentApplied)}
+            </span>
+          </div>
+          <div className="property-card__finance-item">
             <span className="property-card__finance-label">Est. DSR</span>
             <span className={`property-card__finance-value ${
-              property.estimatedDSR > 40 ? 'property-card__finance-value--warning' : ''
+              property.estimatedDSR > ILLUSTRATIVE_DSR_CAP
+                ? 'property-card__finance-value--warning'
+                : ''
             }`}>
               {formatPercentage(property.estimatedDSR)}
             </span>

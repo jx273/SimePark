@@ -5,6 +5,7 @@ import AffordabilityForm from './components/AffordabilityForm';
 import AffordabilityResults from './components/AffordabilityResults';
 import PropertyExplorer from './components/PropertyExplorer';
 import PropertyModal from './components/PropertyModal';
+import AssistantChat from './components/AssistantChat';
 import HowItWorks from './components/HowItWorks';
 import Footer from './components/Footer';
 
@@ -65,10 +66,23 @@ export default function App() {
 
         {enrichedProperties.length > 0 && (
           <PropertyExplorer
+            // Re-seed the explorer filters whenever new preferences are submitted
+            key={`explorer-${userInputs?.preferredLocation ?? 'any'}-${userInputs?.minBedrooms ?? 0}`}
             properties={enrichedProperties}
+            preferences={userInputs}
             onViewDetails={setSelectedProperty}
           />
         )}
+
+        {/* AI assistant: receives the same inputs, results and property records
+            the rest of the page is showing, so its answers stay grounded. */}
+        <AssistantChat
+          userInputs={userInputs}
+          affordabilityResult={affordabilityResult}
+          properties={enrichedProperties}
+          selectedProperty={selectedProperty}
+          onNavigate={scrollToSection}
+        />
 
         <HowItWorks />
       </main>

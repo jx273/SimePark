@@ -1,5 +1,7 @@
 import { PropertyWithCalculations } from '../types/property';
 import { formatMYR, formatPercentage } from '../utils/mortgage';
+import { ILLUSTRATIVE_DSR_CAP, REQUIRED_DOWN_PAYMENT_PERCENTAGE } from '../types/affordability';
+import BudgetBadge from './BudgetBadge';
 import './PropertyModal.css';
 
 interface PropertyModalProps {
@@ -26,9 +28,7 @@ export default function PropertyModal({ property, onClose }: PropertyModalProps)
             <h2 className="modal__title">{property.propertyName}</h2>
             <p className="modal__location">📍 {property.location}</p>
             <p className="modal__price">{formatMYR(property.priceMYR)}</p>
-            <span className={`badge ${property.isAffordable ? 'badge--affordable' : 'badge--over-budget'}`}>
-              {property.isAffordable ? '✓ Within Your Budget' : 'Over Budget'}
-            </span>
+            <BudgetBadge property={property} long />
           </div>
 
           <div className="modal__section">
@@ -70,18 +70,35 @@ export default function PropertyModal({ property, onClose }: PropertyModalProps)
                 <p className="stat-card__note">Estimated payment</p>
               </div>
               <div className="stat-card">
-                <p className="stat-card__label">Down Payment</p>
+                <p className="stat-card__label">Required Down Payment</p>
                 <p className="stat-card__value">{formatMYR(property.requiredDownPayment)}</p>
-                <p className="stat-card__note">10% of property price</p>
+                <p className="stat-card__note">
+                  {REQUIRED_DOWN_PAYMENT_PERCENTAGE}% of property price
+                </p>
+              </div>
+              <div className="stat-card">
+                <p className="stat-card__label">Your Available Cash</p>
+                <p
+                  className={`stat-card__value ${
+                    property.cashShortfall > 0 ? 'stat-card__value--accent' : ''
+                  }`}
+                >
+                  {formatMYR(property.downPaymentApplied)}
+                </p>
+                <p className="stat-card__note">
+                  {property.cashShortfall > 0
+                    ? `Short by ${formatMYR(property.cashShortfall)}`
+                    : 'Covers the required down payment'}
+                </p>
               </div>
               <div className="stat-card">
                 <p className="stat-card__label">Loan Principal</p>
                 <p className="stat-card__value">{formatMYR(property.loanPrincipal)}</p>
-                <p className="stat-card__note">Price minus down payment</p>
+                <p className="stat-card__note">Price minus your cash</p>
               </div>
               <div className="stat-card">
                 <p className="stat-card__label">Est. DSR</p>
-                <p className={`stat-card__value ${property.estimatedDSR > 40 ? 'stat-card__value--accent' : ''}`}>
+                <p className={`stat-card__value ${property.estimatedDSR > ILLUSTRATIVE_DSR_CAP ? 'stat-card__value--accent' : ''}`}>
                   {formatPercentage(property.estimatedDSR)}
                 </p>
                 <p className="stat-card__note">Including this mortgage</p>
@@ -119,9 +136,10 @@ export default function PropertyModal({ property, onClose }: PropertyModalProps)
           <div className="disclaimer">
             <p className="disclaimer__title">⚠️ Estimate Only</p>
             <p className="disclaimer__text">
-              All calculations are illustrative estimates. Actual mortgage rates, eligibility,
-              and costs depend on your lender. Other fees (legal, stamp duty, insurance,
-              maintenance) are not included. This is not financial advice.
+              All calculations are illustrative estimates, not a loan approval, a loan offer,
+              or an eligibility decision. Actual mortgage rates, eligibility, and costs depend
+              on your lender. Other fees (legal, stamp duty, insurance, maintenance) are not
+              included. This is not financial advice.
             </p>
           </div>
         </div>

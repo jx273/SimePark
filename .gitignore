@@ -4,3 +4,6 @@ dist/
 .env.*
 !.env.example
 .DS_Store
+
+# Vercel CLI local state (project link + pulled env vars — may contain secrets)
+.vercel
