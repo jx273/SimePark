@@ -15,7 +15,7 @@
 import type { Connect, Plugin, ResolvedConfig } from 'vite';
 import { loadEnv } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { handleAssistantRequest } from '../api/_lib/handler.js';
+import { handleAssistantRequest } from '../shared/server/handler.js';
 
 const ENDPOINT = '/api/assistant';
 
@@ -99,7 +99,11 @@ export default function assistantDevMiddleware(): Plugin {
         void (async () => {
           try {
             const webRequest = await toWebRequest(req, url);
-            const response = await handleAssistantRequest(webRequest);
+            // Pass bindings explicitly, exactly as the Cloudflare adapter passes
+            // context.env, so no runtime reads a global on our behalf.
+            const response = await handleAssistantRequest(webRequest, {
+              env: process.env as Record<string, unknown>,
+            });
             await writeWebResponse(res, response);
           } catch {
             // Never log the request body or anything derived from the key.

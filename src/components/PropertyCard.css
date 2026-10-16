@@ -5,8 +5,8 @@
 }
 
 .property-card__demo-banner {
-  background-color: #FFF3CD;
-  color: #856404;
+  background-color: var(--color-warning-soft);
+  color: var(--color-success);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
   text-align: center;

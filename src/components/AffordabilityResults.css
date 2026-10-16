@@ -40,7 +40,7 @@
 .results__notice {
   margin-bottom: var(--space-xl);
   padding: var(--space-lg);
-  background-color: #FDF3E7;
+  background-color: var(--color-warning-soft);
   border: 1px solid var(--color-warning);
   border-radius: var(--border-radius);
 }
@@ -88,7 +88,7 @@
 
 .results__limit--binding {
   border-left-color: var(--color-accent);
-  background-color: #FDF3E7;
+  background-color: var(--color-warning-soft);
 }
 
 .results__limit-label {

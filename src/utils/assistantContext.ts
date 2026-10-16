@@ -59,6 +59,9 @@ export function toContextProperty(
     matchExplanation: property.matchExplanation,
     sourceUrl: property.sourceUrl,
     isExample: property.isExample,
+    // Provenance travels with the record so the assistant can label status
+    // without inferring it. Never populated speculatively.
+    verifiedDate: property.verifiedDate,
   };
 }
 
@@ -108,8 +111,10 @@ export interface BuildAssistantContextArgs {
   affordabilityResult: AffordabilityResult | null;
   /** Properties currently listed in the explorer after the user's filters. */
   properties: PropertyWithCalculations[];
-  /** The property open in the detail modal, if any. */
+  /** The property open in the detail view, if any. */
   selectedProperty?: PropertyWithCalculations | null;
+  /** Properties the user explicitly selected for comparison. */
+  comparisonProperties?: PropertyWithCalculations[];
 }
 
 /**
@@ -121,6 +126,7 @@ export function buildAssistantContext({
   affordabilityResult,
   properties,
   selectedProperty = null,
+  comparisonProperties = [],
 }: BuildAssistantContextArgs): AssistantContext {
   const hasAffordabilityResult = Boolean(inputs && affordabilityResult);
   const selected = selectedProperty ? toContextProperty(selectedProperty) : null;
@@ -136,5 +142,10 @@ export function buildAssistantContext({
       : [],
     totalListedProperties: properties.length,
     selectedProperty: selected,
+    // Comparison selection is available to guests too, so it is sent regardless
+    // of whether an affordability result exists.
+    comparisonProperties: comparisonProperties
+      .slice(0, ASSISTANT_LIMITS.maxComparisonProperties)
+      .map(toContextProperty),
   };
 }

@@ -8,13 +8,21 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc -b",
+    "cf:dev": "wrangler pages dev --compatibility-date=2024-11-01 -- npm run dev",
+    "cf:preview": "npm run build && wrangler pages dev dist",
+    "cf:deploy": "npm run build && wrangler pages deploy dist"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
+    "i18next": "^26.4.6",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-i18next": "^17.0.18"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261016.1",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
     "@types/node": "^26.6.5",
@@ -24,6 +32,7 @@
     "happy-dom": "^21.0.1",
     "typescript": "~5.6.2",
     "vite": "^6.0.0",
-    "vitest": "^2.1.0"
+    "vitest": "^2.1.0",
+    "wrangler": "^4.151.0"
   }
 }

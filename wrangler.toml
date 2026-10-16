@@ -1,0 +1,27 @@
+# ============================================================================
+# SimePark — Cloudflare Pages configuration
+# ============================================================================
+# Cloudflare Pages reads this file for local `wrangler pages dev` and for
+# deployment defaults. It is intentionally minimal.
+#
+# Deployment model:
+#   - the Vite SPA is built to `dist/` and served as static assets;
+#   - `functions/api/assistant.ts` is picked up automatically as the
+#     `/api/assistant` Pages Function. No routing configuration is required:
+#     Pages serves an existing static asset when one matches, and only invokes a
+#     Function for routes that do not.
+#
+# SECRETS ARE NOT DECLARED HERE. `GEMINI_API_KEY` must be set as an encrypted
+# Secret in the Cloudflare dashboard or via the CLI, because this file is
+# committed. Declaring a secret's VALUE in a committed file would leak it.
+# See the README, "Cloudflare deployment", for the exact steps.
+# ============================================================================
+
+name = "simepark"
+compatibility_date = "2024-11-01"
+
+# The Pages build output directory, matching `npm run build`.
+pages_build_output_dir = "dist"
+
+# Local development variables for `wrangler pages dev` live in `.dev.vars`,
+# which is git-ignored. Use `.dev.vars.example` as the template.

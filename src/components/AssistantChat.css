@@ -205,7 +205,7 @@
 /* Error state */
 .assistant__error {
   padding: var(--space-md) var(--space-lg);
-  background-color: #FDECEA;
+  background-color: var(--color-error-soft);
   border: 1px solid var(--color-error);
   border-radius: var(--border-radius);
   align-self: stretch;

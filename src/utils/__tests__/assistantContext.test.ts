@@ -105,6 +105,7 @@ describe('toContextProperty', () => {
         'propertyType',
         'requiredDownPayment',
         'sourceUrl',
+        'verifiedDate',
       ].sort()
     );
   });

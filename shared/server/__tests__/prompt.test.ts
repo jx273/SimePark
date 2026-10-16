@@ -5,8 +5,8 @@ import {
   buildSystemInstruction,
   serializeContext,
 } from '../prompt';
-import { ASSISTANT_LIMITS } from '../../../src/types/assistant';
-import type { AssistantContext } from '../../../src/types/assistant';
+import { ASSISTANT_LIMITS } from '../../contract/assistant';
+import type { AssistantContext } from '../../contract/assistant';
 
 const context: AssistantContext = {
   hasAffordabilityResult: true,
@@ -50,6 +50,7 @@ const context: AssistantContext = {
       matchExplanation: 'This property is within your estimated budget.',
       sourceUrl: null,
       isExample: true,
+      verifiedDate: null,
     },
   ],
   totalListedProperties: 1,
