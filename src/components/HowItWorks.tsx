@@ -1,48 +1,40 @@
+import { useTranslation } from 'react-i18next';
+import { useScrollReveal } from '../hooks/interactions';
 import './HowItWorks.css';
 
+const STEPS = ['step1', 'step2', 'step3'] as const;
+const ICONS: Record<(typeof STEPS)[number], string> = {
+  step1: '📊',
+  step2: '🏠',
+  step3: '🔍',
+};
+
 export default function HowItWorks() {
-  const steps = [
-    {
-      number: '01',
-      icon: '📊',
-      title: 'Understand Your Budget',
-      description:
-        'Enter your household income, existing debts, and down payment. SimePark estimates your affordable mortgage budget using transparent assumptions.',
-    },
-    {
-      number: '02',
-      icon: '🏠',
-      title: 'Compare Matching Properties',
-      description:
-        'Browse properties filtered by the location and bedrooms you chose, and ranked by how well they fit your estimated budget. Each one shows its estimated monthly payment, required down payment, whether your cash covers it, and its DSR.',
-    },
-    {
-      number: '03',
-      icon: '🔍',
-      title: 'Review & Research',
-      description:
-        'View detailed calculations for each property, see exactly which limit is holding your budget back, understand the assumptions, and follow source links to original listings for further research.',
-    },
-  ];
+  const { t } = useTranslation();
+  const reveal = useScrollReveal<HTMLElement>();
 
   return (
-    <section className="how-it-works section" id="about">
-      <div className="container">
-        <h2 className="section__title text-center">How SimePark Works</h2>
-        <p className="section__subtitle" style={{ margin: '0 auto var(--space-2xl)', textAlign: 'center' }}>
-          Three simple steps to understand your housing affordability.
+    <section className="how-it-works section" id="about" ref={reveal.ref}>
+      <div className={`container ${reveal.className}`}>
+        <h2 className="section__title text-center">{t('howItWorks.title')}</h2>
+        <p className="section__subtitle section__subtitle--center">
+          {t('howItWorks.subtitle')}
         </p>
 
-        <div className="hiw__grid">
-          {steps.map((step) => (
-            <div key={step.number} className="hiw__step">
-              <span className="hiw__number">{step.number}</span>
-              <span className="hiw__icon">{step.icon}</span>
-              <h3 className="hiw__title">{step.title}</h3>
-              <p className="hiw__description">{step.description}</p>
-            </div>
+        <ol className="hiw__grid">
+          {STEPS.map((step, index) => (
+            <li className={`hiw__step surface reveal--d${index + 1}`} key={step}>
+              <span className="hiw__number" aria-hidden="true">
+                {String(index + 1).padStart(2, '0')}
+              </span>
+              <span className="hiw__icon" aria-hidden="true">
+                {ICONS[step]}
+              </span>
+              <h3 className="hiw__title">{t(`howItWorks.${step}Title`)}</h3>
+              <p className="hiw__description">{t(`howItWorks.${step}Text`)}</p>
+            </li>
           ))}
-        </div>
+        </ol>
       </div>
     </section>
   );

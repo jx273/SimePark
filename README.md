@@ -1,375 +1,387 @@
 # SimePark
 
-Affordability-first property discovery for Malaysian first-time homebuyers. A React +
-TypeScript + Vite single-page app that estimates what you can afford, then filters and
-ranks properties against that estimate.
+Affordability-first Malaysian home discovery. A React + TypeScript + Vite single-page
+application that estimates what a first-time buyer can afford, then filters and ranks real
+property records against that estimate — with an optional AI assistant, accounts, saved
+homes, comparison, and multilingual support.
 
-> **All figures are illustrative planning estimates.** They are not a loan approval, loan
-> offer, eligibility decision, or financial advice.
+> **Every figure is an illustrative planning estimate.** None of it is a loan approval, a
+> loan offer, an eligibility decision, or financial advice.
 
 ---
 
-## Features
+## Contents
 
-| Area | What it does |
+- [What it does](#what-it-does)
+- [Architecture](#architecture)
+- [Requirements](#requirements)
+- [Local setup](#local-setup)
+- [Manual Supabase setup](#manual-supabase-setup)
+- [Cloudflare deployment](#cloudflare-deployment)
+- [Testing](#testing)
+- [Security and privacy](#security-and-privacy)
+- [Project layout](#project-layout)
+- [Known limitations](#known-limitations)
+
+---
+
+## What it does
+
+| Area | Detail |
 | --- | --- |
-| Affordability estimate | Estimates a maximum property price as the **lower** of two ceilings: what your monthly repayment budget can service, and what your available cash can support under a 10% down payment assumption. |
-| Debt service ratio | Applies an illustrative 40%-of-gross-income DSR cap, minus existing commitments. |
-| Property explorer | Filters by location, type, minimum bedrooms, max price and affordability; sorts by match, price or monthly repayment. |
-| Budget badges | Marks each property **Within Budget**, **Over Budget**, or **Cash Short** so a down payment shortfall is never mislabelled as "too expensive". |
-| AI Home-Buying Assistant | A chat panel that explains your estimate, why specific properties matched, and common Malaysian upfront costs. |
+| Affordability | Estimates a maximum property price as the **lower** of two ceilings: what the monthly repayment budget can service, and what available cash supports at a 10% down payment. Both are always shown, and the binding one is named. |
+| Debt service ratio | Illustrative 40%-of-gross-income cap, minus existing commitments. A product assumption, not a bank rule. |
+| Scenario simulator | Adjust extra cash, a target price, income, commitments, tenure and interest rate. Recalculated deterministically; never by the AI. |
+| Property explorer | Filters by location, type, minimum bedrooms, max price and affordability; sorts by match, price or repayment. |
+| Budget status | **Within budget**, **Over monthly budget**, or **Insufficient down-payment cash** — a cash shortfall is never mislabelled as "too expensive". |
+| Provenance labels | **Example listing**, **Source provided**, **Verified on [date]**. "Verified" appears only when the record carries a genuine verification date. |
+| Accounts (optional) | Saved homes, up to three-way comparison, saved budget scenarios, preferences, activity, account settings, password reset. |
+| Admin | Create, edit, publish/unpublish and remove property records, with missing-field review. Authorisation is enforced by the database. |
+| Languages | English, Bahasa Melayu, Simplified Chinese. Persisted, and the AI assistant replies in the selected language. |
+| Voice input | Optional browser speech recognition for English and Bahasa Melayu. |
+| Themes | Light, dark, and follow-system. Persisted, with the OS preference respected on a first visit. |
+| Guests | Visitors can calculate, browse, filter, favourite and compare **without an account**. Registration is requested only to persist data across devices. |
 
-### How the affordability maths works
+### Financial rules preserved
 
-Implemented in plain TypeScript with no network dependency:
+The affordability engine was already correct and was not rewritten. It enforces:
 
-- `src/utils/mortgage.ts` — amortisation and its inverse, input guards, formatting
-- `src/utils/dsr.ts` — DSR, mortgage budget, and the cash-backed price ceiling
-- `src/utils/affordability.ts` — input sanitisation and the two-ceiling result
-- `src/utils/propertyFilter.ts` — enrichment, filtering, scoring, ranking
+- monthly repayment capacity and down-payment cash are **both** limits;
+- `preferredMaxMonthlyPayment` is a user preference and is never confused with the
+  calculated `estimatedMortgageBudget`;
+- unknown values stay `NULL` and are never fabricated;
+- demonstration records are never presented as verified listings.
 
-Key assumptions are documented in one place at the top of `src/utils/affordability.ts`
-and rendered in the UI from `AFFORDABILITY_ASSUMPTIONS` in `src/types/affordability.ts`.
+All arithmetic lives in `src/utils/` as pure TypeScript. The AI model explains those
+figures; it never computes or overrides them.
 
-### How the AI assistant works
+---
 
-The assistant **explains** the app's numbers; it never computes or overrides them.
+## Architecture
 
 ```
-Browser (AssistantChat)
-  │  POST /api/assistant   { message, history, context }
+Browser (React SPA)
+  │  POST /api/assistant   { message, history, context, language }
   ▼
-/api/assistant  ──────────  the only place GEMINI_API_KEY is read
-  │  ├─ Vercel Serverless Function (production)
-  │  └─ Vite dev middleware       (local, same handler)
-  ▼
-Google Gemini Interactions API
+/api/assistant                        ← the only place GEMINI_API_KEY is read
+  ├─ functions/api/assistant.ts         Cloudflare Pages Function (production)
+  └─ server/assistantDevMiddleware.ts   Vite dev middleware  (npm run dev, same handler)
+  │
+  └─ shared/server/handler.ts           validation, prompt, provider call, errors
+                                        └─ shared/server/prompt.ts
+
+Browser → Supabase (Postgres + Auth)
+  └─ publishable key only, protected by Row Level Security
 ```
 
-- The affordability figures sent to the model are produced by the deterministic utilities
-  above and injected as read-only facts, with rules forbidding recalculation.
-- Property details come from `src/data/properties.json` via the app's own enrichment, so
-  the assistant cannot invent a listing, price, or source URL.
-- The prompt separates the three kinds of information in play — figures the app
-  **calculated**, values the **user entered**, and the assistant's own **general knowledge**
-  — and requires provenance to be stated in plain language rather than by tagging
-  sentences. In particular, a user's `preferredMaxMonthlyPayment` is always described as a
-  preference they chose, never as something the app calculated from their income.
-- The assistant is instructed not to state specific statutory rates, live bank rates, or
-  eligibility rules, and to say what it cannot verify instead.
+Key decisions:
 
-Provenance is expressed in prose, not tags. An earlier revision required every claim to be
-prefixed `(Verified)`, `(Estimate)` or `(Unknown)`; that read like debugging output and has
-been removed. Labels are now reserved for the one case where they add something: advice the
-user should independently confirm, such as current statutory rates.
+- **One handler, two runtimes.** `shared/server/handler.ts` is written against the Web
+  `Request`/`Response` standard. Cloudflare passes secrets on `context.env`; the dev
+  middleware passes `process.env`. The handler never reads a global itself, because
+  Cloudflare does **not** expose secrets through `process.env`.
+- **Hash routing.** Cloudflare Pages serves the SPA from one `index.html`; a deep link such
+  as `/property/demo-001` would need a rewrite rule. Hash routes work on any static host
+  with no server configuration.
+- **Guests are first-class.** Without Supabase configured the app runs on the bundled
+  demonstration dataset with browser-local favourites, and sign-in explains that it is
+  unavailable. Nothing crashes.
+- **Supabase is lazy-loaded.** The client is ~228 kB and is imported dynamically, so a
+  guest browsing properties never downloads it.
 
 ---
 
 ## Requirements
 
-- **Node.js 18 or newer** (developed on Node 24). Node 18+ is needed for the global
-  `fetch`, `Request` and `Response` used by the serverless handler.
-- npm (the repo has a `package-lock.json`).
-- A **Google AI Studio API key** — only if you want the AI assistant to answer. Everything
-  else works without one.
+- **Node.js 18 or newer** (developed on 24). Node 18+ provides the global `fetch`,
+  `Request` and `Response` the server handler uses.
+- npm (a `package-lock.json` is committed).
+- Optional, only for the AI assistant: a Google AI Studio API key.
+- Optional, only for accounts and saving: a Supabase project (free tier).
+- Optional, only for deployment: a Cloudflare account (free tier).
 
 ---
 
-## Setup
+## Local setup
 
 ```bash
 npm install
-```
-
-### Configure the API key (server-side only)
-
-```bash
 cp .env.example .env
-```
-
-Then edit `.env` and replace the placeholder with your real key:
-
-```dotenv
-GEMINI_API_KEY=your_real_key_here
-```
-
-Get a key from <https://aistudio.google.com/apikey>.
-
-**Read this before changing anything about the variable name:**
-
-- `GEMINI_API_KEY` is read **only** by server code — `api/_lib/handler.ts` and
-  `server/assistantDevMiddleware.ts`.
-- It is intentionally **not** prefixed with `VITE_`. Vite inlines every `VITE_*` variable
-  into the public browser bundle. Renaming this to `VITE_GEMINI_API_KEY` would publish your
-  key to every visitor.
-- `.env` and all `.env.*` files are git-ignored. Only `.env.example` (placeholders) is
-  committed. Verify with:
-
-  ```bash
-  git check-ignore -v .env      # should print a match
-  ```
-
-### Optional: choose a model
-
-`GEMINI_MODEL` overrides the model. If unset, the code default is
-`DEFAULT_GEMINI_MODEL` in `src/types/assistant.ts`. Model availability and free-tier
-quotas change over time — check the current model list and your own quota in
-[Google AI Studio](https://aistudio.google.com/) before changing it. This feature does
-**not** claim any free tier is permanent; it uses whatever quota your key has.
-
----
-
-## Run locally
-
-```bash
 npm run dev
 ```
 
-That single command serves the app **and** the assistant endpoint:
-
 - App: <http://localhost:5173>
-- Assistant: `POST http://localhost:5173/api/assistant`
+- Assistant endpoint: `POST http://localhost:5173/api/assistant`
 
-The Vite plugin in `server/assistantDevMiddleware.ts` mounts the same handler the
-serverless function uses, so there is no second process to manage. On startup the terminal
-tells you whether a key was detected server-side.
+`npm run dev` is all you need. The Vite plugin mounts the same handler the Pages Function
+uses, so there is no second process. On startup the terminal reports whether a Gemini key
+was detected.
+
+**Use `localhost`, not `127.0.0.1`** — Vite binds IPv6 `::1`.
 
 Verify the endpoint without a browser:
 
 ```bash
 curl -s -X POST http://localhost:5173/api/assistant \
   -H 'Content-Type: application/json' \
-  -d '{"message":"hi"}' | head -c 300
+  -d '{"message":"hi"}' | head -c 200
 ```
 
-With no key configured you get `{"ok":false,"reason":"not_configured",...}` — a friendly
-explanation, not a crash.
+With no key you get `{"ok":false,"reason":"not_configured",...}` — an explanation, not a
+crash.
 
-### Optional: run the real serverless runtime locally
+### Environment variables
 
-Only if you want to exercise Vercel's function runtime instead of the Vite middleware:
+Two strictly separated groups. `.env` and `.dev.vars` are git-ignored; only the
+`*.example` files are committed.
+
+| Variable | Group | Where | Notes |
+| --- | --- | --- | --- |
+| `GEMINI_API_KEY` | **server-only secret** | `.env` locally; encrypted Secret on Cloudflare | Never `VITE_`-prefixed. Without it the assistant explains that it is unconfigured. |
+| `GEMINI_MODEL` | server-only, optional | same as above | Defaults to `DEFAULT_GEMINI_MODEL` in `shared/contract/assistant.ts` (currently `gemini-3.5-flash-lite`, verified working). Only set it for a specific model your key can use. |
+| `VITE_SUPABASE_URL` | **public** | `.env` / Cloudflare build variables | Inlined into the browser bundle. Public by design. |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | **public** | same | The publishable (older projects: anon) key. Protected by RLS, not by secrecy. |
+
+**Never** put a Supabase secret key or a legacy `service_role` key in a `VITE_*` variable.
+Those bypass Row Level Security. The app detects three forms of that mistake (a
+`sb_secret_` prefix, a bare `service_role` value, or a legacy JWT whose decoded `role`
+claim is `service_role`) and refuses to use the key rather than shipping it. Do not rely on
+that guard.
+
+### Optional: the real Cloudflare runtime locally
 
 ```bash
-npx vercel dev
+npm run cf:preview     # build, then wrangler pages dev dist
 ```
 
-This requires the Vercel CLI (installed on demand by `npx`) and a one-time
-`npx vercel login`. It is **not** required for normal development.
+Requires `npx wrangler login` once. This exercises the actual Pages Function. It is **not**
+needed for normal development.
 
 ---
 
-## Other commands
+## Manual Supabase setup
 
-| Command | Purpose |
-| --- | --- |
-| `npm run dev` | Dev server + assistant endpoint |
-| `npm test` | Run the full Vitest suite once |
-| `npm run test:watch` | Vitest in watch mode |
-| `npm run build` | Typecheck (`tsc -b`) then build to `dist/` |
-| `npm run preview` | Preview the production build |
+You must do these steps yourself. Nothing here was executed automatically, and no project
+was created.
 
-`npm run preview` serves static files only and does **not** run `/api/assistant`. The chat
-panel detects this and shows a friendly message pointing at the README instead of failing
-silently.
+1. **Create a project** at <https://supabase.com> (free tier is sufficient). Note the
+   project URL.
+2. **Run the migrations.** Open **SQL Editor** in the dashboard and run these files, in
+   order, from `supabase/migrations/`:
+   - `0001_core_schema.sql` — tables, constraints, indexes, triggers, RLS policies
+   - `0002_seed_demo_properties.sql` — the same 15 demonstration records the app bundles
+   - `0003_admin_setup.sql` — **a template with commented statements**, not an automatic
+     change. Read it; it explains how to grant the first administrator.
+3. **Get the API keys.** Project Settings → **API keys**. Copy the **publishable** key
+   (older projects label it "anon"). Put it in `VITE_SUPABASE_PUBLISHABLE_KEY`, and the
+   project URL in `VITE_SUPABASE_URL`, in `.env`.
+4. **Configure authentication redirect URLs.** Authentication → **URL Configuration**:
+   - Site URL: `http://localhost:5173` for local work, and your production URL later.
+   - Redirect URLs: add `http://localhost:5173/#/auth/callback` and
+     `https://your-project.pages.dev/#/auth/callback`.
+5. **Decide the email confirmation behaviour.** Authentication → Providers → Email:
+   - **Confirm email ON** (default): after signing up, the UI says a confirmation link was
+     sent and the user cannot sign in until they click it. This is what the app's
+     "check your email" state describes.
+   - **Confirm email OFF**: sign-up returns an active session immediately and the user goes
+     straight to the dashboard. Useful for a demo, but it means anyone can register with an
+     address they do not own.
+6. **Test password reset.** Sign in, sign out, choose "Forgot your password?", and follow
+   the emailed link. It returns to `/#/auth/reset`, where the user sets a new password.
+7. **Grant the first administrator** — see below.
 
----
+### Granting the first administrator safely
 
-## Deployment (Vercel)
+Administrator rights are stored in `public.admin_user_ids`, which has RLS enabled and **no
+policies at all**. Consequently no API request from any signed-in user can read or write it,
+and nothing in the application inserts into it. There is no "make me admin" button,
+endpoint, or client function anywhere in this codebase.
 
-The repository is already structured for Vercel:
+1. Sign up normally through the app and confirm your email.
+2. In Supabase, open **Authentication → Users** and copy your user's UUID.
+3. Uncomment the `insert into public.admin_user_ids ...` statement at the top of
+   `0003_admin_setup.sql`, replace the placeholder UUID, and run it in the SQL Editor.
+4. Reload the app. The **Admin** entry appears in the header.
+5. Verify the security property: as a signed-in non-admin, attempt
+   `insert into public.admin_user_ids (user_id) values (auth.uid());`. Expect
+   `ERROR: new row violates row-level security policy`. That error is the guarantee.
 
-- the Vite SPA builds to `dist/`
-- `api/assistant.ts` is detected automatically as the `/api/assistant` Serverless Function
-
-### Steps you must perform manually
-
-These have **not** been done for you — no deployment has been run or verified from this
-environment.
-
-1. **Create a Vercel account** at <https://vercel.com/signup> if you do not have one.
-   The free Hobby tier is sufficient for a demo.
-2. **Install and authenticate the CLI** (or use the Vercel dashboard instead):
-
-   ```bash
-   npx vercel login
-   ```
-
-3. **Link the project** from the repository root and accept the detected settings
-   (Framework Preset: Vite; Build Command: `npm run build`; Output Directory: `dist`):
-
-   ```bash
-   npx vercel link
-   ```
-
-4. **Add the environment variable** for Production, Preview and Development. Either in the
-   dashboard under *Project → Settings → Environment Variables*, or via CLI:
-
-   ```bash
-   npx vercel env add GEMINI_API_KEY
-   ```
-
-   Paste the key when prompted. Optionally add `GEMINI_MODEL` the same way.
-   Use the **server** variable store, never a `VITE_*` name.
-
-5. **Deploy**:
-
-   ```bash
-   npx vercel deploy           # preview deployment
-   npx vercel deploy --prod    # production deployment
-   ```
-
-6. **Verify** the deployment by opening the deployed URL, sending one chat message, and
-   confirming you get a real answer rather than the "not configured" message.
-
-If you use the dashboard instead of the CLI, connect the Git repository, set the same
-environment variable, and let Vercel build on push.
-
-### Cost and quota
-
-The assistant makes **one** Gemini request per question, with no automatic retries and a
-700-token output cap, to keep usage predictable. Free-tier limits are set by Google, change
-over time, and can be checked in Google AI Studio. Do not assume the API is free
-indefinitely, and do not send bulk or automated traffic through a demo deployment.
+To revoke, delete the row. To delete an account entirely, delete the user in
+**Authentication → Users**; private data is removed by cascade. The app deliberately holds
+no `service_role` key, so it cannot delete accounts itself.
 
 ---
 
-## Debugging a rejected Gemini request
+## Cloudflare deployment
 
-If the chat panel reports that the AI service rejected the request, the **server terminal**
-has the specific reason. The browser deliberately never receives Google's raw error, so the
-terminal is the place to look.
+The repository is already structured for Cloudflare Pages. **No deployment has been
+performed or verified from this environment.**
 
-### Reproduce it
+### What is already in place
+
+- `functions/api/assistant.ts` — the Pages Function for `POST /api/assistant`. Pages picks
+  up the `functions/` directory automatically; no routing configuration is needed, because
+  Pages serves a static asset when one matches and only invokes a Function otherwise.
+- `wrangler.toml` — minimal config with `pages_build_output_dir = "dist"`. It declares no
+  secrets, because it is committed.
+- `npm run build` → `dist/` — the Vite static output.
+
+### Steps you must perform
+
+1. **Sign in** to <https://dash.cloudflare.com> (free account).
+2. **Open Workers & Pages** in the sidebar.
+3. **Create a Pages project** → *Connect to Git*.
+4. **Connect the GitHub repository** containing this project. Authorise the Cloudflare
+   GitHub app if prompted.
+5. **Set the production branch** (for example `main`) under *Build settings*.
+6. **Configure the build**:
+   - Framework preset: **Vite**
+   - Build command: `npm run build`
+   - Build output directory: `dist`
+7. **Configure variables and secrets.** Open the project → **Settings → Variables and
+   Secrets**. Add these for **Production** (and Preview, if you use it):
+
+   | Name | Type | Value |
+   | --- | --- | --- |
+   | `GEMINI_API_KEY` | **Secret (encrypted)** | your Google AI Studio key |
+   | `GEMINI_MODEL` | Plain text, optional | leave unset for the shipped default |
+   | `VITE_SUPABASE_URL` | Plain text | your project URL |
+   | `VITE_SUPABASE_PUBLISHABLE_KEY` | Plain text | your **publishable** key |
+
+   `GEMINI_API_KEY` must be a **Secret**, not a plain-text variable. `VITE_*` values are
+   inlined at build time and are public; the non-`VITE_` secret is read at request time by
+   the Function and never reaches the browser.
+8. **Deploy.** Push to the production branch, or use *Create deployment* in the dashboard.
+9. **Verify the frontend** at the assigned `*.pages.dev` URL.
+10. **Verify `/api/assistant`** by sending one chat message and confirming a real answer
+    rather than the "not configured" message.
+11. **Verify authentication and database permissions.** Add the production
+    `/#/auth/callback` URL to Supabase's redirect list (step 4 of the Supabase section),
+    then sign up, confirm, sign in, save a home, reload, and confirm it is still there.
+
+Optional CLI alternative to steps 3–8:
 
 ```bash
-# 1. Start the dev server and leave this terminal visible
-npm run dev
-
-# 2. In a second terminal, trigger one request
-curl -s -X POST http://localhost:5173/api/assistant \
-  -H 'Content-Type: application/json' \
-  -d '{"message":"test","history":[],"context":{"hasAffordabilityResult":false}}'
+npx wrangler login
+npx wrangler pages project create simepark
+npx wrangler pages secret put GEMINI_API_KEY --project-name simepark
+npm run cf:deploy
 ```
 
-Or simply open the app at <http://localhost:5173> and send any message in the chat panel.
+### Free-tier honesty
 
-Note: Vite binds IPv6 `::1`, so use `http://localhost:5173`, not `http://127.0.0.1:5173`.
-
-### Read the terminal line
-
-Look in the terminal running `npm run dev` for a line beginning `[ai-assistant]`:
-
-```
-[ai-assistant] Gemini request rejected. http_status=400 provider_code=400 \
-  provider_status=INVALID_ARGUMENT provider_reason=API_KEY_INVALID \
-  provider_message="API key not valid. Please pass a valid API key." model=gemini-3.5-flash-lite
-```
-
-| Field | What it tells you |
-| --- | --- |
-| `http_status` | The HTTP status Google returned. |
-| `provider_code` | Google's numeric error code. |
-| `provider_status` | Google's gRPC status, e.g. `INVALID_ARGUMENT`, `PERMISSION_DENIED`, `UNAUTHENTICATED`. |
-| `provider_reason` | Google's machine-readable reason from `error.details[]`, e.g. `API_KEY_INVALID`. This is usually the decisive field, because several causes share one HTTP status. |
-| `provider_message` | Google's message, redacted and capped at 300 characters. |
-| `model` | The model that was actually requested, after `GEMINI_MODEL` was resolved. |
-
-### Common combinations
-| `http_status` + `provider_reason` | Meaning | Fix |
-| --- | --- | --- |
-| `400` + `API_KEY_INVALID` | The key is not a valid credential. | Replace `GEMINI_API_KEY` in `.env` with a real key from <https://aistudio.google.com/apikey> and restart `npm run dev`. A placeholder value, a truncated paste, or a key from a deleted project all look like this. |
-| `403` + `PERMISSION_DENIED` | The credential is understood but not allowed. | Enable the Generative Language API for that key's project, or use a key from a project that has it. |
-| `400` + `INVALID_ARGUMENT` with a model complaint | The model name is not available to this key. | Set `GEMINI_MODEL` to a model your key offers. |
-| `404` | The model name does not exist at all. | Fix the `GEMINI_MODEL` spelling. |
-| `429` + `RESOURCE_EXHAUSTED` | Quota or rate limit hit. | Wait; check your quota in Google AI Studio. SimePark never retries automatically. |
-
-### What is deliberately not logged
-
-The `GEMINI_API_KEY` (redacted from log output even if Google echoes it in an error
-message), request headers, and the request payload — including the system instruction and
-the user's affordability figures. Only the five fields above plus the model name are
-written. Browser responses stay generic and never contain upstream error text.
-
----
-
-## Security notes
-
-- The API key is read server-side only and is never included in the browser bundle. The
-  client calls only `/api/assistant`.
-- The browser sends the key to nobody: `src/utils/assistantClient.ts` has no credentials.
-- Upstream error bodies are parsed for diagnosis, logged without the key, and never
-  forwarded to the browser (`api/_lib/diagnostics.ts`).
-- Request bodies are capped (`ASSISTANT_LIMITS.maxBodyBytes`), messages are length-limited,
-  history is trimmed, and the whole context is re-validated and rebuilt field-by-field on
-  the server before reaching the model.
-- Provider error bodies are never forwarded to the client, and no secret is ever logged.
-- Source URLs from property records are only passed through if they are `https://`.
+- Cloudflare Pages and Supabase both have free tiers that are sufficient for this project.
+- **Gemini model availability, rate limits and free-tier eligibility change over time and
+  must be checked by you in Google AI Studio.** This project does not assume any model is
+  permanently free.
+- The assistant makes **one** request per question with a 700-token output cap and **no
+  automatic retries**, deliberately, to keep usage predictable. Quota exhaustion and
+  provider outages are reported to the user instead of being retried.
+- Do not assume the API is free indefinitely, and do not send automated traffic through a
+  demo deployment.
 
 ---
 
 ## Testing
 
 ```bash
-npm test
+npm test          # 367 tests
+npm run typecheck # tsc -b
+npm run build     # typecheck + production build
 ```
 
 Coverage includes the affordability ceilings and edge cases (zero income, commitments above
-the cap, insufficient cash, invalid and non-finite input), property enrichment, filtering
-and ranking, the assistant request contract (missing configuration, invalid and oversized
-input, provider 4xx/5xx mapping, rate limiting, timeouts, empty replies, success), prompt
-construction (writing style, the two-monthly-figure distinction, and the present/absent
-data notes), the client-side context builder, and the chat panel's own UI behaviour
-(four starter questions, Enter to send, Shift+Enter newline, duplicate-submission guard,
-error state and recovery, the context handed to the assistant, and that re-submitting the
-form updates the figures sent on the next question).
+the cap, insufficient cash, invalid and non-finite input), the scenario simulator, property
+enrichment/filtering/ranking, row-to-domain mapping and data-integrity rules, provenance
+labelling, the router round trip, translation completeness and placeholder parity across all
+three languages, theme resolution, auth error classification, the secret-key guard, the
+assistant request contract, prompt construction, and the chat and voice UIs.
 
-UI tests run under `happy-dom`, declared per file with a
-`@vitest-environment happy-dom` docblock, so the calculation suites stay on the faster
-default Node environment.
+UI tests run under `happy-dom` via a per-file `@vitest-environment happy-dom` docblock.
 
-### What has and has not been verified end to end
+### What was and was not verified
 
-**Verified locally:** the full test suite, the production build, the `/api/assistant`
-endpoint's validation and error paths, the "not configured" path, and a real request
-reaching Google's endpoint. Diagnosing that live request produced
-`http_status=400 provider_reason=API_KEY_INVALID`, which identified an invalid credential —
-not a model problem.
+**Verified in this environment:**
 
-**Not verified:** a successful answer, and any deployment. The `GEMINI_API_KEY` currently in
-`.env` is rejected by Google as invalid, so no answer can be generated until it is replaced.
-No deployment was performed.
+- the full test suite and the production build;
+- the `/api/assistant` endpoint locally, including a **real Gemini reply** with the
+  project's own key, and a live check that replies come back in English, Bahasa Melayu and
+  Simplified Chinese;
+- the "not configured" path, request validation, and provider error mapping;
+- that no server-only credential value appears in the browser bundle;
+- that the Supabase client is loaded lazily and not preloaded.
+
+**Not verified:**
+
+- **any deployment**, Cloudflare or otherwise;
+- the real Supabase integration end to end (no project or credentials were available). The
+  SQL migrations, RLS policies, and admin procedure were written and reviewed but have not
+  been executed against a live database;
+- email confirmation and password-reset delivery, which need a configured project and a
+  mailbox;
+- `npm run cf:preview`, which needs `wrangler login`;
+- physical-device testing. Responsiveness was implemented and reviewed but only exercised in
+  a desktop browser at narrow viewport widths.
+
+---
+
+## Security and privacy
+
+- The Gemini key is read server-side only, is never `VITE_`-prefixed, and never appears in
+  the browser bundle. The client calls only `/api/assistant`.
+- Only the Supabase **publishable** key reaches the browser, protected by RLS. Secret and
+  `service_role` keys are refused by a guard that decodes the legacy JWT `role` claim.
+- Request bodies are size-capped, messages length-limited, history trimmed, and the whole
+  assistant context is re-validated and rebuilt field-by-field on the server.
+- Provider error bodies are never forwarded to the browser; diagnostics are redacted and
+  capped before logging.
+- No logging of API keys, authorization headers, income/debt values, full prompts, or full
+  request payloads.
+- Private user tables are all RLS-protected and scoped to `auth.uid()`. Public property data
+  is a separate table with separate policies.
+- The `/privacy` page describes exactly what is stored and what is sent to Gemini, and
+  states plainly that it is **not** a legal compliance assessment.
 
 ---
 
 ## Project layout
 
 ```
-api/
-  assistant.ts              Vercel Serverless Function entry point
-  _lib/handler.ts           validation, provider call, error mapping (platform-agnostic)
-  _lib/prompt.ts            system rules + context serialisation
-  _lib/__tests__/           handler and prompt tests
-server/
-  assistantDevMiddleware.ts Vite dev middleware adapter (same handler)
+functions/api/assistant.ts     Cloudflare Pages Function entry point
+shared/contract/assistant.ts   Runtime-agnostic request/response contract
+shared/server/                 Validation, prompt, provider call, diagnostics
+shared/server/__tests__/       Server-side tests
+server/assistantDevMiddleware.ts  Vite dev adapter (same handler)
+supabase/migrations/           SQL: schema, seed, admin template
 src/
-  components/               AssistantChat, PropertyExplorer, AffordabilityForm, ...
-  data/properties.json      demonstration property records
-  types/                    affordability, property, assistant contracts
-  utils/                    mortgage, dsr, affordability, propertyFilter, assistant*
+  auth/                        Auth context and session persistence
+  components/                  Chat, voice, cards, explorer, simulator, chrome
+  hooks/                       Scroll reveal, animated figures
+  i18n/                        i18next setup and en/ms/zh resources
+  lib/                         Supabase client, repositories, mappers, error mapping
+  pages/                       Home, property detail, dashboard, admin, auth, privacy
+  router/                      Hash router
+  state/                       Favourites and comparison selection
+  theme/                       Light/dark/system theme provider
+  types/                       Domain types
+  utils/                       Deterministic financial arithmetic
 ```
 
 ---
 
 ## Known limitations
 
-- Property records in `src/data/properties.json` are **demonstration data**
-  (`isExample: true`), not verified live listings.
-- The assistant depends on a third-party API. If it is unreachable, rate limited, or
-  unconfigured, the chat panel says so; the rest of SimePark is unaffected.
-- Only the down payment and mortgage repayment are modelled. Stamp duty, legal fees,
-  valuation fees, insurance and maintenance are excluded from the estimate, and the
-  assistant explains them only in general terms without quoting specific rates.
-- Status is tracked per property, not per user or unit, and there is no database, no
-  accounts, and no persistence of conversations beyond the browser session.
-- The production build is typechecked with `tsc -b` against `src`, `api`, `server` and
-  `vite.config.ts`. Vercel performs its own build of the function.
+- Property records are **demonstration data** (`is_example: true`, no source URL, no
+  verification date). They are not real listings, and the UI labels them as such.
+- Only the down payment and the mortgage repayment are modelled. Stamp duty, legal fees,
+  valuation fees, insurance and maintenance are excluded from every calculation. The
+  assistant describes those categories in general terms without quoting specific rates,
+  because no verified current source is bundled.
+- Comparison is capped at three properties, held in the browser, with each set recorded to
+  account history.
+- No analytics, no advertising trackers, no payments, no scraping, and no paid data
+  providers.
+- The assistant requires a third-party API. When it is unavailable, rate limited, or
+  unconfigured, the chat panel explains that; the rest of the application is unaffected.
+- The 404 route is client-side only. A hard request for an unknown path is answered by
+  Cloudflare Pages' own 404 behaviour rather than the SPA.

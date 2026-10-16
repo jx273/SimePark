@@ -11,8 +11,8 @@ import {
   sanitizeHistory,
   validateRequestPayload,
 } from '../handler';
-import { DEFAULT_GEMINI_MODEL, ASSISTANT_LIMITS } from '../../../src/types/assistant';
-import type { AssistantContext } from '../../../src/types/assistant';
+import { DEFAULT_GEMINI_MODEL, ASSISTANT_LIMITS } from '../../contract/assistant';
+import type { AssistantContext } from '../../contract/assistant';
 
 /** Minimal valid context used across the tests. */
 const context: AssistantContext = {
@@ -57,6 +57,7 @@ const context: AssistantContext = {
       matchExplanation: 'This property is within your estimated budget.',
       sourceUrl: null,
       isExample: true,
+      verifiedDate: null,
     },
   ],
   totalListedProperties: 1,
@@ -441,6 +442,7 @@ describe('callGemini', () => {
     message: 'Which properties fit my budget?',
     history: [{ role: 'user' as const, content: 'Hi' }],
     context,
+    language: 'en' as const,
   };
 
   it('sends a well-formed request and returns the reply', async () => {

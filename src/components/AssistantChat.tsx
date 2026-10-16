@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ASSISTANT_LIMITS,
-  SUGGESTED_QUESTIONS,
+  SUGGESTED_QUESTION_KEYS,
   type AssistantMessage,
 } from '../types/assistant';
 import type { AffordabilityInputs, AffordabilityResult } from '../types/affordability';
@@ -9,6 +10,7 @@ import type { PropertyWithCalculations } from '../types/property';
 import { buildAssistantContext } from '../utils/assistantContext';
 import { askAssistant } from '../utils/assistantClient';
 import AssistantMessageText from './AssistantMessageText';
+import VoiceInput from './VoiceInput';
 import './AssistantChat.css';
 
 interface AssistantChatProps {
@@ -18,6 +20,8 @@ interface AssistantChatProps {
   /** Properties currently listed after the user's filters. */
   properties: PropertyWithCalculations[];
   selectedProperty?: PropertyWithCalculations | null;
+  /** Properties the user selected for comparison, so the assistant can use them. */
+  comparisonProperties?: PropertyWithCalculations[];
   /** Lets the panel invite the user to jump to the form. */
   onNavigate?: (section: string) => void;
 }
@@ -27,8 +31,10 @@ export default function AssistantChat({
   affordabilityResult,
   properties,
   selectedProperty = null,
+  comparisonProperties = [],
   onNavigate,
 }: AssistantChatProps) {
+  const { t } = useTranslation();
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -74,6 +80,7 @@ export default function AssistantChat({
         affordabilityResult,
         properties,
         selectedProperty,
+        comparisonProperties,
       });
 
       const result = await askAssistant(question, history, context);
@@ -85,7 +92,9 @@ export default function AssistantChat({
         ]);
         setUsedModel(result.model);
       } else {
-        setError(result.message);
+        // Translate the server's stable reason rather than showing its English
+        // text, so the explanation follows the interface language.
+        setError(t(`assistant.errorReasons.${result.reason}`, { defaultValue: result.message }));
       }
 
       setPendingQuestion(null);
@@ -99,6 +108,8 @@ export default function AssistantChat({
       affordabilityResult,
       properties,
       selectedProperty,
+      comparisonProperties,
+      t,
     ]
   );
 
@@ -172,20 +183,23 @@ export default function AssistantChat({
             {messages.length === 0 && !isLoading && (
               <div className="assistant__intro">
                 <p className="assistant__intro-title">
-                  New here? Try one of these to get started:
+                  {t('assistant.newHere')}
                 </p>
                 <ul className="assistant__suggestions">
-                  {SUGGESTED_QUESTIONS.map((question) => (
-                    <li key={question}>
-                      <button
-                        type="button"
-                        className="assistant__suggestion"
-                        onClick={() => void send(question)}
-                      >
-                        {question}
-                      </button>
-                    </li>
-                  ))}
+                  {SUGGESTED_QUESTION_KEYS.map((key) => {
+                    const question = t(`assistant.suggestions.${key}`);
+                    return (
+                      <li key={key}>
+                        <button
+                          type="button"
+                          className="assistant__suggestion"
+                          onClick={() => void send(question)}
+                        >
+                          {question}
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             )}
@@ -196,7 +210,7 @@ export default function AssistantChat({
                 className={`assistant__message assistant__message--${message.role}`}
               >
                 <span className="assistant__message-role">
-                  {message.role === 'user' ? 'You' : 'Assistant'}
+                  {message.role === 'user' ? t('assistant.you') : t('assistant.assistant')}
                 </span>
                 <div className="assistant__bubble">
                   {message.role === 'assistant' ? (
@@ -210,23 +224,20 @@ export default function AssistantChat({
 
             {isLoading && (
               <div className="assistant__message assistant__message--assistant">
-                <span className="assistant__message-role">Assistant</span>
+                <span className="assistant__message-role">{t('assistant.assistant')}</span>
                 <div className="assistant__bubble assistant__bubble--loading">
                   <span className="assistant__spinner" aria-hidden="true" />
-                  <span>Thinking about your question…</span>
+                  <span>{t('assistant.thinking')}</span>
                 </div>
               </div>
             )}
 
             {error && (
               <div className="assistant__error" role="alert">
-                <p className="assistant__error-title">The assistant could not answer</p>
+                <p className="assistant__error-title">{t('assistant.errorTitle')}</p>
                 <p className="assistant__error-text">{error}</p>
                 {pendingQuestion === null && input.trim() === '' && (
-                  <p className="assistant__error-hint">
-                    You can retry by sending your question again. SimePark does not retry
-                    automatically, to avoid using up the API quota.
-                  </p>
+                  <p className="assistant__error-hint">{t('assistant.errorHint')}</p>
                 )}
               </div>
             )}
@@ -234,13 +245,13 @@ export default function AssistantChat({
 
           <form className="assistant__composer" onSubmit={handleSubmit}>
             <label className="sr-only" htmlFor="assistant-input">
-              Ask the AI home-buying assistant a question
+              {t('assistant.inputLabel')}
             </label>
             <textarea
               id="assistant-input"
               ref={inputRef}
               className="assistant__input"
-              placeholder="Ask about your budget, a property, or upfront costs…"
+              placeholder={t('assistant.inputPlaceholder')}
               value={input}
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={handleKeyDown}
@@ -250,40 +261,47 @@ export default function AssistantChat({
               aria-describedby="assistant-input-hint"
             />
 
+            {/* Optional voice input. Renders a graceful explanation instead of a
+                dead button when the browser has no SpeechRecognition. */}
+            <VoiceInput
+              disabled={isLoading}
+              onTranscript={(transcript) =>
+                setInput((previous) => (previous ? `${previous} ${transcript}` : transcript))
+              }
+            />
+
             <div className="assistant__composer-footer">
               <span
                 id="assistant-input-hint"
                 className={`assistant__hint ${isNearLimit ? 'assistant__hint--warn' : ''}`}
               >
                 {isLoading
-                  ? 'Waiting for a reply…'
-                  : `Enter to send · Shift+Enter for a new line${
-                      isNearLimit ? ` · ${remaining} characters left` : ''
-                    }`}
+                  ? t('assistant.waiting')
+                  : isNearLimit
+                    ? t('assistant.hintRemaining', { count: remaining })
+                    : t('assistant.hint')}
               </span>
               <button
                 type="submit"
                 className="btn btn--primary assistant__send"
                 disabled={isLoading || input.trim().length === 0}
               >
-                {isLoading ? 'Sending…' : 'Send'}
+                {isLoading ? t('assistant.sending') : t('assistant.send')}
               </button>
             </div>
           </form>
 
           <div className="assistant__status">
             <span className="assistant__status-dot" aria-hidden="true" />
-            {usedModel ? (
-              <span>
-                Estimates only — not loan approval or financial advice. Answered by{' '}
-                <code>{usedModel}</code> via a server-side Gemini API call.
-              </span>
-            ) : (
-              <span>
-                Estimates only — not loan approval or financial advice. The API key stays on
-                the server.
-              </span>
-            )}
+            <span>
+              {t('assistant.privacyNote')}
+              {usedModel && (
+                <>
+                  {' '}
+                  {t('assistant.answeredBy', { model: usedModel })}
+                </>
+              )}
+            </span>
           </div>
         </div>
       </div>
