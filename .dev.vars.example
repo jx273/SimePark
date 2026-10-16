@@ -1,0 +1,26 @@
+# ============================================================================
+# SimePark — Cloudflare local development variables (EXAMPLE FILE)
+# ============================================================================
+# Used ONLY by `npm run cf:dev` (wrangler pages dev), which runs the real
+# Cloudflare Pages Functions runtime locally.
+#
+# Copy to `.dev.vars`:
+#     cp .dev.vars.example .dev.vars
+#
+# `.dev.vars` is git-ignored (Cloudflare's convention). It holds a SECRET, so it
+# must never be committed and must never be prefixed with VITE_.
+#
+# Normal development (`npm run dev`) does NOT use this file: the Vite middleware
+# reads `.env` instead. You only need this if you want to exercise the actual
+# Workers runtime, for example to confirm the Pages Function wiring before
+# deploying.
+#
+# Note: wrangler does not serve the Vite frontend, so `npm run cf:dev` is for
+# testing /api/assistant in isolation. Run `npm run build` first if you want the
+# built frontend served alongside it.
+# ============================================================================
+
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Optional. See the note in .env.example.
+# GEMINI_MODEL=gemini-3.5-flash
