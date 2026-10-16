@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { PropertyWithCalculations } from '../types/property';
 import { AffordabilityInputs } from '../types/affordability';
 import {
@@ -13,34 +14,60 @@ import PropertyCard from './PropertyCard';
 import './PropertyExplorer.css';
 
 interface PropertyExplorerProps {
+  /** Enriched records. Empty before a personalized calculation exists. */
   properties: PropertyWithCalculations[];
-  /** Preferences submitted with the affordability form, used to seed filters */
+  /** Raw catalogue count, used for the "showing X of Y" line. */
+  totalCount: number;
   preferences?: AffordabilityInputs | null;
   onViewDetails: (property: PropertyWithCalculations) => void;
+  isSaved: (propertyId: string) => boolean;
+  isCompared: (propertyId: string) => boolean;
+  onToggleSaved: (propertyId: string) => void;
+  onToggleCompared: (propertyId: string) => void;
+  comparisonFull: boolean;
+  /** False for guests who have not yet personalised the estimate. */
+  hasPersonalisedEstimate: boolean;
+  onGoToAffordability: () => void;
 }
 
 export default function PropertyExplorer({
   properties,
+  totalCount,
   preferences,
   onViewDetails,
+  isSaved,
+  isCompared,
+  onToggleSaved,
+  onToggleCompared,
+  comparisonFull,
+  hasPersonalisedEstimate,
+  onGoToAffordability,
 }: PropertyExplorerProps) {
-  // Seed with the preferences from the form so a chosen location and minimum
-  // bedrooms actually filter the list, not just the match score.
+  const { t } = useTranslation();
+
+  // Seed with the submitted preferences so location and bedrooms actually filter.
   const [filters, setFilters] = useState<PropertyFilters>(() =>
     filtersFromPreferences(preferences)
   );
   const [sortBy, setSortBy] = useState<SortOption>('match');
 
-  // Extract unique locations and property types for filter dropdowns
-  const locations = ['All', ...Array.from(new Set(properties.map((p) => p.location))).sort()];
-  const propertyTypes = ['All', ...Array.from(new Set(properties.map((p) => p.propertyType))).sort()];
+  // Dropdown options come from the full catalogue, not the filtered subset, so a
+  // filter can never remove its own options.
+  const locations = useMemo(
+    () => ['All', ...Array.from(new Set(properties.map((p) => p.location))).sort()],
+    [properties]
+  );
+  const propertyTypes = useMemo(
+    () => ['All', ...Array.from(new Set(properties.map((p) => p.propertyType))).sort()],
+    [properties]
+  );
 
-  const { properties: matchingProperties, hiddenUnknownBedrooms } = filterPropertiesWithMeta(
+  const { properties: matching, hiddenUnknownBedrooms } = filterPropertiesWithMeta(
     properties,
     filters
   );
 
-  const filteredProperties = sortProperties(matchingProperties, sortBy);
+  const filtered = sortProperties(matching, sortBy);
 
   const hasActiveFilters =
     filters.location !== DEFAULT_FILTERS.location ||
@@ -49,90 +76,112 @@ export default function PropertyExplorer({
     filters.maxPrice !== DEFAULT_FILTERS.maxPrice ||
     filters.affordableOnly !== DEFAULT_FILTERS.affordableOnly;
 
-  const handleFilterChange = (key: keyof PropertyFilters, value: string | number | boolean) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
+  const change = (key: keyof PropertyFilters, value: string | number | boolean) => {
+    setFilters((previous) => ({ ...previous, [key]: value }));
   };
 
   return (
     <section className="explorer section section--alt" id="properties">
       <div className="container">
-        <h2 className="section__title">Explore Properties</h2>
-        <p className="section__subtitle">
-          Properties are filtered by the location and bedrooms you selected, and ranked by how
-          well they match your estimated budget.
-        </p>
+        <h2 className="section__title">{t('explorer.title')}</h2>
+        <p className="section__subtitle">{t('explorer.subtitle')}</p>
 
-        {/* Filters */}
-        <div className="explorer__filters">
+        {!hasPersonalisedEstimate && properties.length > 0 && (
+          <div className="explorer__prompt surface" role="status">
+            <div>
+              <p className="explorer__prompt-title">{t('explorer.promptTitle')}</p>
+              <p className="explorer__prompt-text">{t('explorer.promptText')}</p>
+            </div>
+            <button type="button" className="btn btn--primary" onClick={onGoToAffordability}>
+              {t('hero.primaryCta')}
+            </button>
+          </div>
+        )}
+
+        <div className="explorer__filters surface">
           <div className="explorer__filter">
-            <label className="form-label" htmlFor="filter-sort">Sort By</label>
+            <label className="form-label" htmlFor="filter-sort">
+              {t('explorer.sortBy')}
+            </label>
             <select
               id="filter-sort"
               className="form-select"
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as SortOption)}
+              onChange={(event) => setSortBy(event.target.value as SortOption)}
             >
-              <option value="match">Best Match</option>
-              <option value="price-asc">Price: Low to High</option>
-              <option value="price-desc">Price: High to Low</option>
-              <option value="mortgage-asc">Monthly Payment: Low to High</option>
+              <option value="match">{t('explorer.sortMatch')}</option>
+              <option value="price-asc">{t('explorer.sortPriceAsc')}</option>
+              <option value="price-desc">{t('explorer.sortPriceDesc')}</option>
+              <option value="mortgage-asc">{t('explorer.sortMortgageAsc')}</option>
             </select>
           </div>
 
           <div className="explorer__filter">
-            <label className="form-label" htmlFor="filter-location">Location</label>
+            <label className="form-label" htmlFor="filter-location">
+              {t('explorer.location')}
+            </label>
             <select
               id="filter-location"
               className="form-select"
               value={filters.location}
-              onChange={(e) => handleFilterChange('location', e.target.value)}
+              onChange={(event) => change('location', event.target.value)}
             >
-              {locations.map((loc) => (
-                <option key={loc} value={loc}>{loc}</option>
+              {locations.map((location) => (
+                <option key={location} value={location}>
+                  {location === 'All' ? t('common.all') : location}
+                </option>
               ))}
             </select>
           </div>
 
           <div className="explorer__filter">
-            <label className="form-label" htmlFor="filter-type">Property Type</label>
+            <label className="form-label" htmlFor="filter-type">
+              {t('explorer.propertyType')}
+            </label>
             <select
               id="filter-type"
               className="form-select"
               value={filters.propertyType}
-              onChange={(e) => handleFilterChange('propertyType', e.target.value)}
+              onChange={(event) => change('propertyType', event.target.value)}
             >
               {propertyTypes.map((type) => (
-                <option key={type} value={type}>{type}</option>
+                <option key={type} value={type}>
+                  {type === 'All' ? t('common.all') : type}
+                </option>
               ))}
             </select>
           </div>
 
           <div className="explorer__filter">
-            <label className="form-label" htmlFor="filter-bedrooms">Min Bedrooms</label>
+            <label className="form-label" htmlFor="filter-bedrooms">
+              {t('explorer.minBedrooms')}
+            </label>
             <select
               id="filter-bedrooms"
               className="form-select"
               value={filters.minBedrooms}
-              onChange={(e) => handleFilterChange('minBedrooms', parseInt(e.target.value) || 0)}
+              onChange={(event) => change('minBedrooms', parseInt(event.target.value, 10) || 0)}
             >
-              <option value="0">Any</option>
-              <option value="1">1+</option>
-              <option value="2">2+</option>
-              <option value="3">3+</option>
-              <option value="4">4+</option>
-              <option value="5">5+</option>
+              <option value="0">{t('affordability.anyBedrooms')}</option>
+              {[1, 2, 3, 4, 5].map((count) => (
+                <option key={count} value={count}>
+                  {t('affordability.bedroomsPlus', { count })}
+                </option>
+              ))}
             </select>
           </div>
 
           <div className="explorer__filter">
-            <label className="form-label" htmlFor="filter-maxprice">Max Price (RM)</label>
+            <label className="form-label" htmlFor="filter-maxprice">
+              {t('explorer.maxPrice')}
+            </label>
             <input
               id="filter-maxprice"
               type="number"
               className="form-input"
-              placeholder="No limit"
+              placeholder={t('explorer.noLimit')}
               value={filters.maxPrice || ''}
-              onChange={(e) => handleFilterChange('maxPrice', parseInt(e.target.value) || 0)}
+              onChange={(event) => change('maxPrice', parseInt(event.target.value, 10) || 0)}
               min="0"
               step="50000"
             />
@@ -143,65 +192,67 @@ export default function PropertyExplorer({
               <input
                 type="checkbox"
                 checked={filters.affordableOnly}
-                onChange={(e) => handleFilterChange('affordableOnly', e.target.checked)}
+                onChange={(event) => change('affordableOnly', event.target.checked)}
               />
-              <span>Affordable only</span>
+              <span>{t('explorer.affordableOnly')}</span>
             </label>
           </div>
         </div>
 
-        {/* Results count */}
         <p className="explorer__count">
-          Showing {filteredProperties.length} of {properties.length} properties
+          {t('explorer.showing', { shown: filtered.length, total: totalCount })}
         </p>
 
         {hasActiveFilters && (
           <div className="explorer__active-filters">
-            <span className="explorer__active-filters-text">
-              Filters applied from your preferences
-              {filters.location !== DEFAULT_FILTERS.location && ` · ${filters.location}`}
-              {filters.minBedrooms > 0 && ` · ${filters.minBedrooms}+ bedrooms`}
-            </span>
+            <span className="explorer__active-filters-text">{t('explorer.filtersApplied')}</span>
             <button
-              className="btn btn--secondary"
+              type="button"
+              className="btn btn--secondary btn--sm"
               onClick={() => setFilters(DEFAULT_FILTERS)}
             >
-              Reset Filters
+              {t('explorer.resetFilters')}
             </button>
           </div>
         )}
 
         {hiddenUnknownBedrooms > 0 && (
           <p className="explorer__note">
-            {hiddenUnknownBedrooms} propert{hiddenUnknownBedrooms === 1 ? 'y was' : 'ies were'}{' '}
-            hidden because the bedroom count is unknown and your minimum-bedroom filter is
-            active. Clear the bedroom filter to see them.
+            {t('explorer.hiddenUnknownBedrooms', { count: hiddenUnknownBedrooms })}
           </p>
         )}
 
-        {/* Property grid */}
-        {filteredProperties.length > 0 ? (
+        {filtered.length > 0 ? (
           <div className="explorer__grid">
-            {filteredProperties.map((property) => (
-              <PropertyCard
+            {filtered.map((property, index) => (
+              <div
                 key={property.id}
-                property={property}
-                onViewDetails={onViewDetails}
-              />
+                className={`reveal is-visible reveal--d${(index % 4) + 1}`}
+              >
+                <PropertyCard
+                  property={property}
+                  onViewDetails={onViewDetails}
+                  isSaved={isSaved(property.id)}
+                  isCompared={isCompared(property.id)}
+                  onToggleSaved={onToggleSaved}
+                  onToggleCompared={onToggleCompared}
+                  comparisonFull={comparisonFull}
+                />
+              </div>
             ))}
           </div>
         ) : (
           <div className="empty-state">
-            <div className="empty-state__icon">🏘️</div>
-            <h3 className="empty-state__title">No properties match your criteria</h3>
-            <p className="empty-state__text">
-              Try adjusting your budget, location, or filter preferences to see more options.
-            </p>
+            <div className="empty-state__icon" aria-hidden="true">
+              🏘️
+            </div>
+            <h3 className="empty-state__title">{t('explorer.emptyTitle')}</h3>
+            <p className="empty-state__text">{t('explorer.emptyText')}</p>
             <button
               className="btn btn--secondary mt-lg"
               onClick={() => setFilters(DEFAULT_FILTERS)}
             >
-              Reset Filters
+              {t('explorer.resetFilters')}
             </button>
           </div>
         )}

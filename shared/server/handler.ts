@@ -2,12 +2,12 @@
  * Core, platform-agnostic handler for POST /api/assistant.
  *
  * Written once against the Web `Request`/`Response` standard so the same code
- * runs in two places without duplication:
- *  - locally, mounted as Vite dev middleware (see server/assistantDevMiddleware.ts)
- *  - in production, as a Vercel Node.js serverless function (see api/assistant.ts)
+ * runs in every runtime without duplication:
+ *  - in production, as a Cloudflare Pages Function (functions/api/assistant.ts)
+ *  - locally, mounted as Vite dev middleware (server/assistantDevMiddleware.ts)
  *
  * Security notes:
- *  - GEMINI_API_KEY is read here, on the server, and never returned or logged.
+ *  - GEMINI_API_KEY arrives as a runtime binding and is never returned or logged.
  *  - Nothing in this file is imported by browser code except the request and
  *    response *types*, which contain no secrets.
  *  - The client's context is untrusted: every field is validated and rebuilt
@@ -23,10 +23,17 @@ import {
   type AssistantContextInputs,
   type AssistantContextProperty,
   type AssistantErrorReason,
+  type AssistantLanguage,
   type AssistantMessage,
   type AssistantRequestPayload,
-} from '../../src/types/assistant.js';
+} from '../contract/assistant.js';
 import { buildSystemInstruction } from './prompt.js';
+import {
+  mergeEnv,
+  readNodeEnv,
+  resolveServerConfig,
+  type RuntimeEnv,
+} from './config.js';
 import {
   logProviderDiagnostics,
   sanitizeProviderError,
@@ -57,9 +64,18 @@ const VALID_BUDGET_STATUSES = [
 /* ------------------------------------------------------------------ */
 
 export interface HandlerOptions {
-  /** Override the API key (tests). Defaults to process.env.GEMINI_API_KEY. */
+  /**
+   * Runtime bindings for this request.
+   *
+   * Cloudflare Pages Functions pass `context.env`; the local dev middleware and
+   * tests pass `process.env`. This is the ONLY source of the Gemini credentials:
+   * the handler never reads a global itself, because Cloudflare does not expose
+   * secrets through `process.env`.
+   */
+  env?: RuntimeEnv;
+  /** Test-only override for the API key. Takes precedence over `env`. */
   apiKey?: string;
-  /** Override the model (tests). Defaults to process.env.GEMINI_MODEL. */
+  /** Test-only override for the model. Takes precedence over `env`. */
   model?: string;
   /** Injectable fetch (tests). */
   fetchImpl?: typeof fetch;
@@ -73,16 +89,24 @@ export interface HandlerOptions {
 }
 
 /**
- * Read configuration from the server environment only.
+ * Read configuration from the supplied runtime bindings.
+ *
+ * Test-only `apiKey`/`model` options override the bindings. Node's `process.env`
+ * is merged in as a fallback so the local dev middleware and tests keep working
+ * without threading an env object everywhere.
+ *
  * Never log the returned key.
  */
 export function readConfig(options: HandlerOptions = {}) {
-  const raw = options.apiKey ?? process.env.GEMINI_API_KEY ?? '';
-  const apiKey = raw.trim();
-  const model =
-    (options.model ?? process.env.GEMINI_MODEL ?? '').trim() || DEFAULT_GEMINI_MODEL;
+  const env = mergeEnv(
+    {
+      ...(options.apiKey !== undefined ? { GEMINI_API_KEY: options.apiKey } : {}),
+      ...(options.model !== undefined ? { GEMINI_MODEL: options.model } : {}),
+    },
+    { ...readNodeEnv(), ...(options.env ?? {}) }
+  );
 
-  return { apiKey, model, isConfigured: apiKey.length > 0 };
+  return resolveServerConfig(env);
 }
 
 /* ------------------------------------------------------------------ */
@@ -274,6 +298,11 @@ export function sanitizeProperty(value: unknown): AssistantContextProperty | nul
     // nudged into repeating a javascript: or data: payload back to the user.
     sourceUrl: sourceUrl && /^https:\/\//i.test(sourceUrl) ? sourceUrl : null,
     isExample: readBoolean(value.isExample) ?? true,
+    // Provenance. Only an ISO-like date string is accepted; anything else is
+    // null so the model can never be told a property is verified when it is not.
+    verifiedDate: /^\d{4}-\d{2}-\d{2}/.test(readText(value.verifiedDate, 32) ?? '')
+      ? (readText(value.verifiedDate, 32) ?? '').slice(0, 10)
+      : null,
   };
 }
 
@@ -289,6 +318,14 @@ export function sanitizeContext(value: unknown): AssistantContext {
     .filter((property): property is AssistantContextProperty => property !== null)
     .slice(0, ASSISTANT_LIMITS.maxContextProperties);
 
+  const rawComparison = Array.isArray(source.comparisonProperties)
+    ? source.comparisonProperties
+    : [];
+  const comparisonProperties = rawComparison
+    .map(sanitizeProperty)
+    .filter((property): property is AssistantContextProperty => property !== null)
+    .slice(0, ASSISTANT_LIMITS.maxComparisonProperties);
+
   const inputs = sanitizeInputs(source.inputs);
   const affordability = sanitizeAffordability(source.affordability);
 
@@ -300,6 +337,7 @@ export function sanitizeContext(value: unknown): AssistantContext {
     totalListedProperties:
       readNumber(source.totalListedProperties, { min: 0, max: 100000 }) ?? properties.length,
     selectedProperty: sanitizeProperty(source.selectedProperty),
+    comparisonProperties,
   };
 }
 
@@ -325,6 +363,8 @@ export interface ValidatedRequest {
   message: string;
   history: AssistantMessage[];
   context: AssistantContext;
+  /** Reply language requested by the UI. Defaults to English. */
+  language: AssistantLanguage;
 }
 
 export type ValidationResult =
@@ -363,8 +403,17 @@ export function validateRequestPayload(raw: unknown): ValidationResult {
       message,
       history: sanitizeHistory(raw.history),
       context: sanitizeContext(raw.context),
+      language: sanitizeLanguage(raw.language),
     },
   };
+}
+
+/**
+ * Accept only the languages the UI actually offers. Anything else falls back to
+ * English rather than being interpolated into the system instruction.
+ */
+export function sanitizeLanguage(value: unknown): AssistantLanguage {
+  return value === 'ms' || value === 'zh' ? value : 'en';
 }
 
 /* ------------------------------------------------------------------ */
@@ -508,7 +557,7 @@ export async function callGemini(
 
   const body = {
     model: config.model,
-    system_instruction: buildSystemInstruction(validated.context),
+    system_instruction: buildSystemInstruction(validated.context, validated.language),
     input: buildConversationInput(validated.history, validated.message),
     generation_config: {
       max_output_tokens: ASSISTANT_LIMITS.maxOutputTokens,

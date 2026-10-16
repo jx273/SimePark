@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   AffordabilityInputs,
   DEFAULT_AFFORDABILITY_INPUTS,
@@ -6,55 +7,74 @@ import {
   AFFORDABILITY_ASSUMPTIONS,
 } from '../types/affordability';
 import { calculateMortgageBudget } from '../utils/dsr';
+import { useScrollReveal } from '../hooks/interactions';
 import './AffordabilityForm.css';
 
 interface AffordabilityFormProps {
   onSubmit: (inputs: AffordabilityInputs) => void;
+  /** Values to pre-fill, e.g. a loaded scenario or restored preferences. */
+  initialInputs?: AffordabilityInputs | null;
+  /** Persist the submitted values as the user's preferences, when signed in. */
+  onPersistPreferences?: (inputs: AffordabilityInputs) => void;
 }
 
-interface FormErrors {
-  monthlyIncome?: string;
-  monthlyDebts?: string;
-  downPayment?: string;
-  annualInterestRate?: string;
-  loanTenureYears?: string;
-  preferredMaxMonthlyPayment?: string;
-}
+type FieldKey =
+  | 'monthlyIncome'
+  | 'monthlyDebts'
+  | 'downPayment'
+  | 'annualInterestRate'
+  | 'loanTenureYears'
+  | 'preferredMaxMonthlyPayment';
 
-export default function AffordabilityForm({ onSubmit }: AffordabilityFormProps) {
-  const [formData, setFormData] = useState<AffordabilityInputs>(DEFAULT_AFFORDABILITY_INPUTS);
-  const [errors, setErrors] = useState<FormErrors>({});
-  const [warnings, setWarnings] = useState<FormErrors>({});
+const LOCATIONS = [
+  'Kuala Lumpur',
+  'Petaling Jaya',
+  'Shah Alam',
+  'Subang Jaya',
+  'Cyberjaya',
+  'Putrajaya',
+];
+
+export default function AffordabilityForm({
+  onSubmit,
+  initialInputs = null,
+  onPersistPreferences,
+}: AffordabilityFormProps) {
+  const { t } = useTranslation();
+  const reveal = useScrollReveal<HTMLElement>();
+
+  const [formData, setFormData] = useState<AffordabilityInputs>(
+    initialInputs ?? DEFAULT_AFFORDABILITY_INPUTS
+  );
+  const [errors, setErrors] = useState<Partial<Record<FieldKey, string>>>({});
+  const [warnings, setWarnings] = useState<Partial<Record<FieldKey, string>>>({});
   const [submitted, setSubmitted] = useState(false);
 
-  const locations = [
-    '', 'Kuala Lumpur', 'Petaling Jaya', 'Shah Alam',
-    'Subang Jaya', 'Cyberjaya', 'Putrajaya',
-  ];
+  // Adopt externally supplied values (a loaded scenario, restored preferences).
+  useEffect(() => {
+    if (initialInputs) setFormData(initialInputs);
+  }, [initialInputs]);
 
-  function validate(data: AffordabilityInputs): FormErrors {
-    const errs: FormErrors = {};
+  const locationOptions = useMemo(() => LOCATIONS, []);
+
+  function validate(data: AffordabilityInputs): Partial<Record<FieldKey, string>> {
+    const errs: Partial<Record<FieldKey, string>> = {};
 
     if (!data.monthlyIncome || data.monthlyIncome <= 0) {
-      errs.monthlyIncome = 'Monthly income must be greater than zero.';
+      errs.monthlyIncome = t('affordability.validation.incomeRequired');
     }
-    if (data.monthlyDebts < 0) {
-      errs.monthlyDebts = 'Debts cannot be negative.';
-    }
-    if (data.downPayment < 0) {
-      errs.downPayment = 'Down payment cannot be negative.';
-    }
+    if (data.monthlyDebts < 0) errs.monthlyDebts = t('affordability.validation.debtsNegative');
+    if (data.downPayment < 0) errs.downPayment = t('affordability.validation.downPaymentNegative');
     if (data.annualInterestRate < 0) {
-      errs.annualInterestRate = 'Interest rate cannot be negative.';
-    }
-    if (data.annualInterestRate > 20) {
-      errs.annualInterestRate = 'Interest rate seems unreasonably high.';
+      errs.annualInterestRate = t('affordability.validation.rateNegative');
+    } else if (data.annualInterestRate > 20) {
+      errs.annualInterestRate = t('affordability.validation.rateTooHigh');
     }
     if (data.loanTenureYears < 1 || data.loanTenureYears > 40) {
-      errs.loanTenureYears = 'Loan tenure must be between 1 and 40 years.';
+      errs.loanTenureYears = t('affordability.validation.tenureRange');
     }
     if (data.preferredMaxMonthlyPayment !== undefined && data.preferredMaxMonthlyPayment < 0) {
-      errs.preferredMaxMonthlyPayment = 'Preferred payment cannot be negative.';
+      errs.preferredMaxMonthlyPayment = t('affordability.validation.preferredNegative');
     }
 
     return errs;
@@ -62,11 +82,11 @@ export default function AffordabilityForm({ onSubmit }: AffordabilityFormProps) 
 
   /**
    * Non-blocking guidance. A preferred payment above the repayment budget still
-   * works, but the calculated budget is what actually limits results, so say so
-   * instead of letting the user believe the higher figure applies.
+   * works, but the calculated budget is what limits results, so say so rather
+   * than letting the user believe the higher figure applies.
    */
-  function collectWarnings(data: AffordabilityInputs): FormErrors {
-    const warns: FormErrors = {};
+  function collectWarnings(data: AffordabilityInputs): Partial<Record<FieldKey, string>> {
+    const warns: Partial<Record<FieldKey, string>> = {};
     const preferred = data.preferredMaxMonthlyPayment ?? 0;
 
     if (preferred > 0 && data.monthlyIncome > 0) {
@@ -75,51 +95,36 @@ export default function AffordabilityForm({ onSubmit }: AffordabilityFormProps) 
         data.monthlyDebts,
         ILLUSTRATIVE_DSR_CAP
       );
+
       if (budget <= 0) {
-        warns.preferredMaxMonthlyPayment =
-          `Your existing commitments already use the full ${ILLUSTRATIVE_DSR_CAP}% debt-service ` +
-          `assumption, so no new mortgage fits under these assumptions.`;
+        warns.preferredMaxMonthlyPayment = t('affordability.warnings.noRoom', {
+          cap: ILLUSTRATIVE_DSR_CAP,
+        });
       } else if (preferred > budget) {
-        warns.preferredMaxMonthlyPayment =
-          `Higher than your estimated budget of about RM ${Math.round(budget).toLocaleString('en-MY')} ` +
-          `per month (${ILLUSTRATIVE_DSR_CAP}% of income minus existing commitments). ` +
-          `The lower figure will be used.`;
+        warns.preferredMaxMonthlyPayment = t('affordability.warnings.aboveBudget', {
+          budget: Math.round(budget).toLocaleString('en-MY'),
+          cap: ILLUSTRATIVE_DSR_CAP,
+        });
       }
     }
 
     return warns;
   }
 
-  function handleChange(field: keyof AffordabilityInputs, value: string) {
+  function handleChange(field: FieldKey, value: string) {
     const numValue = value === '' ? 0 : parseFloat(value);
-    if (isNaN(numValue)) return;
+    if (Number.isNaN(numValue)) return;
 
-    setFormData((prev) => ({ ...prev, [field]: numValue }));
+    setFormData((previous) => ({ ...previous, [field]: numValue }));
 
-    // Clear error for this field on change
     if (submitted) {
-      setErrors((prev) => ({ ...prev, [field]: undefined }));
-      setWarnings((prev) => ({ ...prev, [field]: undefined }));
+      setErrors((previous) => ({ ...previous, [field]: undefined }));
+      setWarnings((previous) => ({ ...previous, [field]: undefined }));
     }
   }
 
-  function handleLocationChange(value: string) {
-    setFormData((prev) => ({
-      ...prev,
-      preferredLocation: value || undefined,
-    }));
-  }
-
-  function handleBedroomChange(value: string) {
-    const num = parseInt(value, 10);
-    setFormData((prev) => ({
-      ...prev,
-      minBedrooms: isNaN(num) || num <= 0 ? undefined : num,
-    }));
-  }
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
     setSubmitted(true);
 
     const validationErrors = validate(formData);
@@ -128,162 +133,168 @@ export default function AffordabilityForm({ onSubmit }: AffordabilityFormProps) 
 
     if (Object.keys(validationErrors).length === 0) {
       onSubmit(formData);
+      onPersistPreferences?.(formData);
     }
   }
 
-  const inputValue = (val: number | undefined) =>
-    val === undefined || val === 0 ? '' : String(val);
+  const inputValue = (value: number | undefined) =>
+    value === undefined || value === 0 ? '' : String(value);
 
   return (
-    <section className="affordability-form section" id="affordability">
-      <div className="container container--narrow">
-        <h2 className="section__title text-center">
-          Understand Your Affordability
-        </h2>
-        <p className="section__subtitle" style={{ margin: '0 auto var(--space-2xl)' }}>
-          Enter your financial details to estimate how much home you can afford.
-          All calculations are illustrative estimates.
+    <section className="affordability-form section" id="affordability" ref={reveal.ref}>
+      <div className={`container container--narrow ${reveal.className}`}>
+        <h2 className="section__title text-center">{t('affordability.sectionTitle')}</h2>
+        <p className="section__subtitle section__subtitle--center">
+          {t('affordability.sectionSubtitle')}
         </p>
 
-        <form className="af-form" onSubmit={handleSubmit} noValidate>
-          {/* Required Financial Inputs */}
+        <form className="af-form surface" onSubmit={handleSubmit} noValidate>
           <div className="af-form__section">
-            <h3 className="af-form__section-title">Financial Details</h3>
+            <h3 className="af-form__section-title">{t('affordability.financialDetails')}</h3>
 
             <div className="form-group">
               <label className="form-label" htmlFor="monthlyIncome">
-                Monthly Household Income (RM)
+                {t('affordability.monthlyIncome')}
               </label>
-              <span className="form-helper">
-                Your gross monthly household income before tax and deductions.
-              </span>
+              <span className="form-helper">{t('affordability.monthlyIncomeHelp')}</span>
               <input
                 id="monthlyIncome"
                 type="number"
                 className={`form-input ${errors.monthlyIncome ? 'form-input--error' : ''}`}
-                placeholder="e.g. 6000"
+                placeholder="6000"
                 value={inputValue(formData.monthlyIncome)}
-                onChange={(e) => handleChange('monthlyIncome', e.target.value)}
+                onChange={(event) => handleChange('monthlyIncome', event.target.value)}
                 min="0"
                 step="100"
+                aria-invalid={Boolean(errors.monthlyIncome)}
               />
               {errors.monthlyIncome && (
-                <p className="form-error">{errors.monthlyIncome}</p>
+                <p className="form-error">
+                  <span aria-hidden="true">⚠ </span>
+                  {errors.monthlyIncome}
+                </p>
               )}
             </div>
 
             <div className="form-group">
               <label className="form-label" htmlFor="monthlyDebts">
-                Existing Monthly Debt Commitments (RM)
+                {t('affordability.monthlyDebts')}
               </label>
-              <span className="form-helper">
-                Include car loans, personal loans, credit card minimums, PTPTN, etc.
-              </span>
+              <span className="form-helper">{t('affordability.monthlyDebtsHelp')}</span>
               <input
                 id="monthlyDebts"
                 type="number"
                 className={`form-input ${errors.monthlyDebts ? 'form-input--error' : ''}`}
-                placeholder="e.g. 800"
+                placeholder="800"
                 value={inputValue(formData.monthlyDebts)}
-                onChange={(e) => handleChange('monthlyDebts', e.target.value)}
+                onChange={(event) => handleChange('monthlyDebts', event.target.value)}
                 min="0"
                 step="100"
+                aria-invalid={Boolean(errors.monthlyDebts)}
               />
               {errors.monthlyDebts && (
-                <p className="form-error">{errors.monthlyDebts}</p>
+                <p className="form-error">
+                  <span aria-hidden="true">⚠ </span>
+                  {errors.monthlyDebts}
+                </p>
               )}
             </div>
 
             <div className="form-group">
               <label className="form-label" htmlFor="downPayment">
-                Available Down Payment (RM)
+                {t('affordability.downPayment')}
               </label>
               <span className="form-helper">
-                Cash you actually have available for the down payment. We use this amount
-                directly — we do not assume you can cover the{' '}
-                {AFFORDABILITY_ASSUMPTIONS.downPaymentPercent}% requirement regardless. If it
-                falls short of {AFFORDABILITY_ASSUMPTIONS.downPaymentPercent}% of a property's
-                price, we will show that shortfall instead of hiding it.
+                {t('affordability.downPaymentHelp', {
+                  percent: AFFORDABILITY_ASSUMPTIONS.downPaymentPercent,
+                })}
               </span>
               <input
                 id="downPayment"
                 type="number"
                 className={`form-input ${errors.downPayment ? 'form-input--error' : ''}`}
-                placeholder="e.g. 40000"
+                placeholder="40000"
                 value={inputValue(formData.downPayment)}
-                onChange={(e) => handleChange('downPayment', e.target.value)}
+                onChange={(event) => handleChange('downPayment', event.target.value)}
                 min="0"
                 step="1000"
+                aria-invalid={Boolean(errors.downPayment)}
               />
               {errors.downPayment && (
-                <p className="form-error">{errors.downPayment}</p>
+                <p className="form-error">
+                  <span aria-hidden="true">⚠ </span>
+                  {errors.downPayment}
+                </p>
               )}
             </div>
           </div>
 
-          {/* Loan Assumptions */}
           <div className="af-form__section">
-            <h3 className="af-form__section-title">Loan Assumptions</h3>
+            <h3 className="af-form__section-title">{t('affordability.loanAssumptions')}</h3>
 
             <div className="af-form__row">
               <div className="form-group">
                 <label className="form-label" htmlFor="annualInterestRate">
-                  Annual Interest Rate (%)
+                  {t('affordability.interestRate')}
                 </label>
-                <span className="form-helper">
-                  Typical Malaysian housing loan rates are 3.5%–5.0%.
-                </span>
+                <span className="form-helper">{t('affordability.interestRateHelp')}</span>
                 <input
                   id="annualInterestRate"
                   type="number"
                   className={`form-input ${errors.annualInterestRate ? 'form-input--error' : ''}`}
                   value={formData.annualInterestRate}
-                  onChange={(e) => handleChange('annualInterestRate', e.target.value)}
+                  onChange={(event) => handleChange('annualInterestRate', event.target.value)}
                   min="0"
                   max="20"
                   step="0.1"
+                  aria-invalid={Boolean(errors.annualInterestRate)}
                 />
                 {errors.annualInterestRate && (
-                  <p className="form-error">{errors.annualInterestRate}</p>
+                  <p className="form-error">
+                    <span aria-hidden="true">⚠ </span>
+                    {errors.annualInterestRate}
+                  </p>
                 )}
               </div>
 
               <div className="form-group">
                 <label className="form-label" htmlFor="loanTenureYears">
-                  Loan Tenure (Years)
+                  {t('affordability.loanTenure')}
                 </label>
-                <span className="form-helper">
-                  Maximum 35 years in Malaysia. Common choices: 25–35 years.
-                </span>
+                <span className="form-helper">{t('affordability.loanTenureHelp')}</span>
                 <input
                   id="loanTenureYears"
                   type="number"
                   className={`form-input ${errors.loanTenureYears ? 'form-input--error' : ''}`}
                   value={formData.loanTenureYears}
-                  onChange={(e) => handleChange('loanTenureYears', e.target.value)}
+                  onChange={(event) => handleChange('loanTenureYears', event.target.value)}
                   min="1"
                   max="40"
                   step="1"
+                  aria-invalid={Boolean(errors.loanTenureYears)}
                 />
                 {errors.loanTenureYears && (
-                  <p className="form-error">{errors.loanTenureYears}</p>
+                  <p className="form-error">
+                    <span aria-hidden="true">⚠ </span>
+                    {errors.loanTenureYears}
+                  </p>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Optional Preferences */}
           <div className="af-form__section">
             <h3 className="af-form__section-title">
-              Preferences <span className="af-form__optional">(Optional)</span>
+              {t('affordability.preferences')}{' '}
+              <span className="af-form__optional">({t('common.optional')})</span>
             </h3>
 
             <div className="form-group">
               <label className="form-label" htmlFor="preferredMaxMonthlyPayment">
-                Preferred Maximum Monthly Payment (RM)
+                {t('affordability.preferredMonthlyPayment')}
               </label>
               <span className="form-helper">
-                Leave blank to use the calculated maximum based on your income and debts.
+                {t('affordability.preferredMonthlyPaymentHelp')}
               </span>
               <input
                 id="preferredMaxMonthlyPayment"
@@ -291,69 +302,85 @@ export default function AffordabilityForm({ onSubmit }: AffordabilityFormProps) 
                 className={`form-input ${
                   errors.preferredMaxMonthlyPayment ? 'form-input--error' : ''
                 }`}
-                placeholder="e.g. 2000"
+                placeholder="2000"
                 value={inputValue(formData.preferredMaxMonthlyPayment)}
-                onChange={(e) => handleChange('preferredMaxMonthlyPayment', e.target.value)}
+                onChange={(event) =>
+                  handleChange('preferredMaxMonthlyPayment', event.target.value)
+                }
                 min="0"
                 step="100"
+                aria-invalid={Boolean(errors.preferredMaxMonthlyPayment)}
               />
               {errors.preferredMaxMonthlyPayment && (
-                <p className="form-error">{errors.preferredMaxMonthlyPayment}</p>
+                <p className="form-error">
+                  <span aria-hidden="true">⚠ </span>
+                  {errors.preferredMaxMonthlyPayment}
+                </p>
               )}
               {!errors.preferredMaxMonthlyPayment && warnings.preferredMaxMonthlyPayment && (
-                <p className="form-warning">{warnings.preferredMaxMonthlyPayment}</p>
+                <p className="form-warning">
+                  <span aria-hidden="true">ℹ </span>
+                  {warnings.preferredMaxMonthlyPayment}
+                </p>
               )}
             </div>
 
             <div className="af-form__row">
               <div className="form-group">
                 <label className="form-label" htmlFor="preferredLocation">
-                  Preferred Location
+                  {t('affordability.preferredLocation')}
                 </label>
-                <span className="form-helper">
-                  Filters the property list to this area (case-insensitive, matches any part of
-                  the address).
-                </span>
+                <span className="form-helper">{t('affordability.preferredLocationHelp')}</span>
                 <select
                   id="preferredLocation"
                   className="form-select"
-                  value={formData.preferredLocation || ''}
-                  onChange={(e) => handleLocationChange(e.target.value)}
+                  value={formData.preferredLocation ?? ''}
+                  onChange={(event) =>
+                    setFormData((previous) => ({
+                      ...previous,
+                      preferredLocation: event.target.value || undefined,
+                    }))
+                  }
                 >
-                  <option value="">Any location</option>
-                  {locations.filter(Boolean).map((loc) => (
-                    <option key={loc} value={loc}>{loc}</option>
+                  <option value="">{t('affordability.anyLocation')}</option>
+                  {locationOptions.map((location) => (
+                    <option key={location} value={location}>
+                      {location}
+                    </option>
                   ))}
                 </select>
               </div>
 
               <div className="form-group">
                 <label className="form-label" htmlFor="minBedrooms">
-                  Minimum Bedrooms
+                  {t('affordability.minBedrooms')}
                 </label>
-                <span className="form-helper">
-                  Filters the property list. Properties with an unknown bedroom count are
-                  excluded while this is set, and we will tell you how many.
-                </span>
+                <span className="form-helper">{t('affordability.minBedroomsHelp')}</span>
                 <select
                   id="minBedrooms"
                   className="form-select"
-                  value={formData.minBedrooms || ''}
-                  onChange={(e) => handleBedroomChange(e.target.value)}
+                  value={formData.minBedrooms ?? ''}
+                  onChange={(event) => {
+                    const parsed = parseInt(event.target.value, 10);
+                    setFormData((previous) => ({
+                      ...previous,
+                      minBedrooms: Number.isNaN(parsed) || parsed <= 0 ? undefined : parsed,
+                    }));
+                  }}
                 >
-                  <option value="">Any</option>
-                  <option value="1">1+</option>
-                  <option value="2">2+</option>
-                  <option value="3">3+</option>
-                  <option value="4">4+</option>
-                  <option value="5">5+</option>
+                  <option value="">{t('affordability.anyBedrooms')}</option>
+                  {[1, 2, 3, 4, 5].map((count) => (
+                    <option key={count} value={count}>
+                      {t('affordability.bedroomsPlus', { count })}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
           </div>
 
           <button type="submit" className="btn btn--primary btn--large af-form__submit">
-            🏠 Find My Home
+            {t('affordability.submit')}
           </button>
         </form>
       </div>

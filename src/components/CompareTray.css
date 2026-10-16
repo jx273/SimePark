@@ -1,0 +1,80 @@
+/* ---------- Comparison ---------- */
+
+.compare__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.compare__empty {
+  margin-top: var(--space-lg);
+  padding: var(--space-xl);
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.compare__empty-hint {
+  margin-top: var(--space-xs);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+/* Focusable scroll region so a keyboard user can reach every column. */
+.compare__scroll {
+  margin-top: var(--space-lg);
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius);
+  background-color: var(--color-bg-card);
+}
+
+.compare__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+  min-width: 560px;
+}
+
+.compare__table th,
+.compare__table td {
+  padding: var(--space-md);
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.compare__table thead th {
+  background-color: var(--color-bg-section);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+}
+
+.compare__table tbody th {
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+}
+
+.compare__name {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.compare__remove {
+  margin-top: var(--space-xs);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--border-radius-sm);
+}
+
+.compare__remove:hover {
+  color: var(--color-error);
+  background-color: var(--color-error-soft);
+}

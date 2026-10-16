@@ -9,7 +9,10 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { I18nextProvider } from 'react-i18next';
+import type { i18n as I18nInstance } from 'i18next';
 import AssistantChat from '../AssistantChat';
+import { createTestI18n } from '../../test/testI18n';
 import { askAssistant } from '../../utils/assistantClient';
 import type { AffordabilityInputs, AffordabilityResult } from '../../types/affordability';
 import type { PropertyWithCalculations } from '../../types/property';
@@ -74,8 +77,11 @@ const property: PropertyWithCalculations = {
   matchExplanation: 'This property is within your estimated budget.',
 };
 
+let i18n: I18nInstance;
+
+/** Render the chat inside a real i18next provider so t() resolves. */
 function renderChat(overrides: Partial<Parameters<typeof AssistantChat>[0]> = {}) {
-  return render(
+  const chat = (
     <AssistantChat
       userInputs={inputs}
       affordabilityResult={affordabilityResult}
@@ -84,10 +90,30 @@ function renderChat(overrides: Partial<Parameters<typeof AssistantChat>[0]> = {}
       {...overrides}
     />
   );
+  return render(<I18nextProvider i18n={i18n}>{chat}</I18nextProvider>);
 }
 
-beforeEach(() => {
+/** Re-render with new props while keeping the same i18n provider. */
+function rerenderChat(
+  rerender: (ui: React.ReactElement) => void,
+  overrides: Partial<Parameters<typeof AssistantChat>[0]>
+) {
+  rerender(
+    <I18nextProvider i18n={i18n}>
+      <AssistantChat
+        userInputs={inputs}
+        affordabilityResult={affordabilityResult}
+        properties={[property]}
+        selectedProperty={null}
+        {...overrides}
+      />
+    </I18nextProvider>
+  );
+}
+
+beforeEach(async () => {
   askAssistantMock.mockReset();
+  i18n = await createTestI18n('en');
 });
 
 afterEach(() => {
@@ -149,7 +175,8 @@ describe('AssistantChat — sending', () => {
     // The bold marker is rendered as an element, not printed literally.
     expect(screen.getByText('RM 400,000').tagName).toBe('STRONG');
     expect(screen.queryByText(/\*\*/)).toBeNull();
-    expect(screen.getByText('test-model')).toBeTruthy();
+    // The model name is now part of the translated attribution sentence.
+    expect(screen.getByText(/test-model/)).toBeTruthy();
   });
 
   it('sends the drafted question with Enter and clears the box', async () => {
@@ -261,14 +288,11 @@ describe('AssistantChat — sending', () => {
     const { rerender } = renderChat();
 
     // The user has not submitted anything affordable yet.
-    rerender(
-      <AssistantChat
-        userInputs={null}
-        affordabilityResult={null}
-        properties={[]}
-        selectedProperty={null}
-      />
-    );
+    rerenderChat(rerender, {
+      userInputs: null,
+      affordabilityResult: null,
+      properties: [],
+    });
 
     const textarea = screen.getByLabelText(
       /Ask the AI home-buying assistant a question/i
@@ -290,14 +314,11 @@ describe('AssistantChat — sending', () => {
       limitingFactor: 'repayment',
       bindingConstraint: 'repayment',
     };
-    rerender(
-      <AssistantChat
-        userInputs={{ ...inputs, monthlyIncome: 9000, preferredMaxMonthlyPayment: 1500 }}
-        affordabilityResult={updatedResult}
-        properties={[property]}
-        selectedProperty={null}
-      />
-    );
+    rerenderChat(rerender, {
+      userInputs: { ...inputs, monthlyIncome: 9000, preferredMaxMonthlyPayment: 1500 },
+      affordabilityResult: updatedResult,
+      properties: [property],
+    });
 
     fireEvent.change(textarea, { target: { value: 'And now?' } });
     fireEvent.keyDown(textarea, { key: 'Enter' });
