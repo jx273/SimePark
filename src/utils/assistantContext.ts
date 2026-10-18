@@ -46,7 +46,7 @@ export function toContextProperty(
     propertyName: property.propertyName,
     location: property.location,
     priceMYR: property.priceMYR,
-    propertyType: property.propertyType,
+    propertyType: property.propertyType ?? 'Not recorded',
     bedrooms: property.bedrooms,
     builtUpSqft: property.builtUpSqft,
     estimatedMonthlyMortgage: property.estimatedMonthlyMortgage,

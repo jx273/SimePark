@@ -27,6 +27,7 @@ import type { Session, User } from '@supabase/supabase-js';
 import { getSupabaseClient, supabaseAvailable } from '../lib/supabase';
 import { classifyAuthError, type AuthErrorKey } from '../lib/authErrors';
 import { checkIsAdmin } from '../lib/userRepository';
+import { signupRequiresEmailConfirmation } from './signupOutcome';
 
 export interface SignUpOutcome {
   /** True when Supabase requires the user to confirm their email first. */
@@ -151,7 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) return { error: classifyAuthError(error) };
 
       // With "Confirm email" enabled, Supabase returns a user but no session.
-      const needsEmailConfirmation = Boolean(data.user) && !data.session;
+      const needsEmailConfirmation = signupRequiresEmailConfirmation(data);
       return { error: null, outcome: { needsEmailConfirmation } };
     },
     []

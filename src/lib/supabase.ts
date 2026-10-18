@@ -11,8 +11,8 @@
  *    are intentionally public artefacts; the README states this clearly.
  *
  * The client is created lazily and only when both values are present, so the app
- * runs in "no database" mode with the bundled demo dataset rather than throwing
- * on startup. Every consumer must handle `isSupabaseConfigured === false`.
+ * runs in "no database" mode with the supplied local source fixture rather than
+ * throwing on startup. Every consumer must handle `isSupabaseConfigured === false`.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -22,14 +22,54 @@ function readEnv(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-const url = readEnv(import.meta.env.VITE_SUPABASE_URL);
+/**
+ * Reduce whatever is configured to the Supabase PROJECT ROOT URL.
+ *
+ * This is the root cause of a real production bug: `VITE_SUPABASE_URL` was set to
+ * `https://<ref>.supabase.co/rest/v1/`. `createClient()` appends `/auth/v1` for
+ * authentication and `/rest/v1` for data, so the configured suffix produced
+ * `https://<ref>.supabase.co/rest/v1/auth/v1/signup` — a 404 that made every
+ * registration attempt fail.
+ *
+ * The Supabase client requires the project root. Normalising here means the app
+ * is correct even if an operator pastes the REST or Auth endpoint by mistake, and
+ * it is why this class of misconfiguration cannot silently break sign-up again.
+ */
+export function normalizeSupabaseUrl(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+
+  // Strip any known API path suffix (with or without a trailing slash) and any
+  // trailing slashes, leaving the origin.
+  return trimmed
+    .replace(/\/(rest|auth|storage|realtime|functions)\/v1\/?$/i, '')
+    .replace(/\/+$/, '');
+}
+
+/** True when the configured value must be corrected (used for a clear warning). */
+export function looksLikeApiEndpoint(raw: string): boolean {
+  return /\/(rest|auth|storage|realtime|functions)\/v1\/?$/i.test(raw.trim());
+}
+
+const rawUrl = readEnv(import.meta.env.VITE_SUPABASE_URL);
+const url = normalizeSupabaseUrl(rawUrl);
 const publishableKey = readEnv(import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY);
+
+if (looksLikeApiEndpoint(rawUrl)) {
+  // Names the variable, never its value. Surfaces a fixable misconfiguration
+  // instead of letting every auth request 404.
+  console.warn(
+    '[simepark] VITE_SUPABASE_URL should be the project root (https://<ref>.supabase.co), ' +
+      'not an API endpoint. The "/rest/v1" style suffix has been ignored; correct the value ' +
+      'in your environment and rebuild.'
+  );
+}
 
 /**
  * True when the app has enough configuration to talk to Supabase.
  *
- * When false the app still works: sign-in and saving are unavailable, and the
- * property catalogue falls back to the bundled demonstration dataset.
+ * When false the app still works: sign-in and saving are unavailable, and local
+ * development may use the supplied four-record fixture as its catalogue.
  */
 export const isSupabaseConfigured = url.length > 0 && publishableKey.length > 0;
 

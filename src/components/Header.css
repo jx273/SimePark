@@ -159,6 +159,12 @@
   color: var(--color-primary);
 }
 
+.site-header__menu-error {
+  padding: var(--space-xs) var(--space-sm);
+  color: var(--color-error);
+  font-size: var(--font-size-xs);
+}
+
 .site-header__burger {
   display: none;
   padding: var(--space-sm);

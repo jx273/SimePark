@@ -209,6 +209,47 @@ describe('filterPropertiesWithMeta — filtering behaviour', () => {
     expect(hiddenUnknownBedrooms).toBe(1);
   });
 
+  it('applies location and minimum-bedroom filters together', () => {
+    const enriched = enrich(sample);
+    const { properties } = filterPropertiesWithMeta(enriched, {
+      ...DEFAULT_FILTERS,
+      location: 'Petaling Jaya',
+      minBedrooms: 3,
+    });
+
+    expect(properties.map((property) => property.id)).toEqual(['pj-5bed']);
+  });
+
+  it('filters by bathrooms and built-up area without treating unknowns as matches', () => {
+    const enriched = enrich([
+      makeProperty({ id: 'large', bathrooms: 3, builtUpSqft: 1500 }),
+      makeProperty({ id: 'small', bathrooms: 1, builtUpSqft: 800 }),
+      makeProperty({ id: 'unknown-area', bathrooms: 3, builtUpSqft: null }),
+    ]);
+
+    const { properties } = filterPropertiesWithMeta(enriched, {
+      ...DEFAULT_FILTERS,
+      minBathrooms: 2,
+      minBuiltUpSqft: 1000,
+    });
+
+    expect(properties.map((property) => property.id)).toEqual(['large']);
+  });
+
+  it('requires every selected facility and ignores properties without facility data', () => {
+    const enriched = enrich([
+      makeProperty({ id: 'both', facilities: ['Gym', 'Swimming Pool'] }),
+      makeProperty({ id: 'gym-only', facilities: ['Gym'] }),
+      makeProperty({ id: 'not-recorded', facilities: undefined }),
+    ]);
+
+    const { properties } = filterPropertiesWithMeta(enriched, {
+      ...DEFAULT_FILTERS,
+      facilities: ['Gym', 'Swimming Pool'],
+    });
+    expect(properties.map((property) => property.id)).toEqual(['both']);
+  });
+
   it('keeps unknown bedroom counts visible when no bedroom filter is active', () => {
     const enriched = enrich(sample);
     const { properties, hiddenUnknownBedrooms } = filterPropertiesWithMeta(
@@ -260,9 +301,13 @@ describe('sortProperties', () => {
     );
 
     const byMortgage = sortProperties(enriched, 'mortgage-asc');
-    expect(byMortgage[0].estimatedMonthlyMortgage).toBeLessThanOrEqual(
-      byMortgage[2].estimatedMonthlyMortgage
-    );
+    const lowestPayment = byMortgage[0].estimatedMonthlyMortgage;
+    const highestPayment = byMortgage[2].estimatedMonthlyMortgage;
+    expect(lowestPayment).not.toBeNull();
+    expect(highestPayment).not.toBeNull();
+    if (lowestPayment !== null && highestPayment !== null) {
+      expect(lowestPayment).toBeLessThanOrEqual(highestPayment);
+    }
 
     const byMatch = sortProperties(enriched, 'match');
     for (let i = 1; i < byMatch.length; i += 1) {

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { PropertyWithCalculations } from '../types/property';
 import { formatMYR } from '../utils/mortgage';
@@ -40,26 +41,37 @@ export default function CompareTray({ properties, onRemove, onClear }: CompareTr
     );
   }
 
-  const rows: Array<{ label: string; render: (property: PropertyWithCalculations) => string }> = [
+  const rows: Array<{ label: string; render: (property: PropertyWithCalculations) => ReactNode }> = [
     { label: t('compare.price'), render: (p) => formatMYR(p.priceMYR) },
     { label: t('compare.monthly'), render: (p) => formatMYR(p.estimatedMonthlyMortgage) },
     { label: t('compare.downPayment'), render: (p) => formatMYR(p.requiredDownPayment) },
     {
       label: t('compare.cashCovered'),
       render: (p) =>
-        p.cashShortfall > 0
-          ? `${t('common.no')} — ${t('card.cashShort', { amount: formatMYR(p.cashShortfall) })}`
-          : t('common.yes'),
+        p.cashShortfall === null
+          ? t('status.notCalculated')
+          : p.cashShortfall > 0
+            ? `${t('common.no')} — ${t('card.cashShort', { amount: formatMYR(p.cashShortfall) })}`
+            : t('common.yes'),
     },
     {
       label: t('compare.withinBudget'),
-      render: (p) => (p.isAffordable ? t('common.yes') : t('common.no')),
+      render: (p) =>
+        p.isAffordable === null
+          ? t('status.notCalculated')
+          : p.isAffordable
+            ? t('common.yes')
+            : t('common.no'),
     },
     { label: t('compare.location'), render: (p) => p.location },
-    { label: t('compare.type'), render: (p) => p.propertyType },
+    { label: t('compare.type'), render: (p) => p.propertyType ?? t('common.unknown') },
     {
       label: t('compare.bedrooms'),
       render: (p) => (p.bedrooms === null ? t('common.unknown') : String(p.bedrooms)),
+    },
+    {
+      label: t('compare.bathrooms'),
+      render: (p) => (p.bathrooms === null ? t('common.unknown') : String(p.bathrooms)),
     },
     {
       label: t('compare.builtUp'),
@@ -67,6 +79,93 @@ export default function CompareTray({ properties, onRemove, onClear }: CompareTr
         p.builtUpSqft === null
           ? t('common.unknown')
           : `${p.builtUpSqft.toLocaleString()} ${t('detail.sqft')}`,
+    },
+    {
+      label: t('detail.landArea'),
+      render: (p) =>
+        p.landArea == null
+          ? t('common.unknown')
+          : `${p.landArea.toLocaleString()} ${p.landAreaUnit ?? ''}`.trim(),
+    },
+    {
+      label: t('detail.tenure'),
+      render: (p) => p.tenure ?? t('common.unknown'),
+    },
+    {
+      label: t('detail.furnishing'),
+      render: (p) => p.furnishingStatus ?? t('common.unknown'),
+    },
+    {
+      label: t('detail.nearestTransit'),
+      render: (p) =>
+        p.nearestTransit
+          ? `${p.nearestTransit}${p.transitDistanceKm == null ? '' : ` — ${p.transitDistanceKm} km (${p.transitMode ?? t('detail.routeTypeUnknown')})`}`
+          : t('common.unknown'),
+    },
+    {
+      label: t('detail.facilities'),
+      render: (p) => p.facilities?.join(', ') || t('common.unknown'),
+    },
+    {
+      label: t('detail.gallery'),
+      render: (p) => {
+        const photos = (p.media ?? []).filter((item) => item.kind === 'photo');
+        return photos.length > 0 ? (
+          <div className="compare__media">
+            {photos.map((photo) => (
+              <a
+                key={photo.id}
+                href={photo.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={photo.caption ?? p.propertyName}
+              >
+                <img
+                  src={photo.url}
+                  alt={photo.altText ?? photo.caption ?? p.propertyName}
+                  loading="lazy"
+                />
+              </a>
+            ))}
+          </div>
+        ) : (
+          t('common.unknown')
+        );
+      },
+    },
+    {
+      label: t('detail.floorplans'),
+      render: (p) => {
+        const plans = (p.media ?? []).filter((item) => item.kind === 'floorplan');
+        return plans.length > 0 ? (
+          <div className="compare__media">
+            {plans.map((plan) => (
+              <a
+                key={plan.id}
+                href={plan.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={plan.caption ?? t('detail.floorplan')}
+              >
+                <img
+                  src={plan.url}
+                  alt={plan.altText ?? plan.caption ?? t('detail.floorplan')}
+                  loading="lazy"
+                />
+              </a>
+            ))}
+          </div>
+        ) : (
+          t('common.unknown')
+        );
+      },
+    },
+    {
+      label: t('detail.availability'),
+      render: (p) =>
+        p.availabilityStatus === 'unknown'
+          ? t('detail.availabilityUnknown')
+          : p.availabilityStatus ?? t('common.unknown'),
     },
   ];
 

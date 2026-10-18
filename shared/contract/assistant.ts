@@ -66,12 +66,12 @@ export interface AssistantContextProperty {
   propertyType: string;
   bedrooms: number | null;
   builtUpSqft: number | null;
-  estimatedMonthlyMortgage: number;
-  requiredDownPayment: number;
-  cashShortfall: number;
-  estimatedDSR: number;
-  isAffordable: boolean;
-  budgetStatus: 'affordable' | 'overMonthlyBudget' | 'insufficientDownPayment';
+  estimatedMonthlyMortgage: number | null;
+  requiredDownPayment: number | null;
+  cashShortfall: number | null;
+  estimatedDSR: number | null;
+  isAffordable: boolean | null;
+  budgetStatus: 'affordable' | 'overMonthlyBudget' | 'insufficientDownPayment' | 'uncalculated';
   matchScore: number;
   matchExplanation: string;
   sourceUrl: string | null;

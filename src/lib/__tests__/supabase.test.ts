@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { isSecretKey, isSupabaseConfigured, looksLikeSecretKey, readJwtRole } from '../supabase';
+import {
+  isSecretKey,
+  isSupabaseConfigured,
+  looksLikeSecretKey,
+  looksLikeApiEndpoint,
+  normalizeSupabaseUrl,
+  readJwtRole,
+} from '../supabase';
 
 /**
  * The critical property: a SECRET key must never be usable in the browser.
@@ -69,10 +76,22 @@ describe('isSecretKey', () => {
 });
 
 describe('configuration state', () => {
-  it('reports unconfigured when no build-time values are present', () => {
-    // Tests run without VITE_SUPABASE_* values, so the app must be in the
-    // guest-only mode that the UI is designed to explain.
-    expect(isSupabaseConfigured).toBe(false);
+  it('normalizes configured Supabase API endpoints to the project root', () => {
+    expect(normalizeSupabaseUrl('https://project.supabase.co/rest/v1/')).toBe(
+      'https://project.supabase.co'
+    );
+    expect(normalizeSupabaseUrl('https://project.supabase.co/auth/v1')).toBe(
+      'https://project.supabase.co'
+    );
+    expect(normalizeSupabaseUrl('https://project.supabase.co/')).toBe(
+      'https://project.supabase.co'
+    );
+    expect(looksLikeApiEndpoint('https://project.supabase.co/rest/v1/')).toBe(true);
+    expect(looksLikeApiEndpoint('https://project.supabase.co')).toBe(false);
+  });
+
+  it('reports a boolean configuration state without assuming the test host has no .env file', () => {
+    expect(typeof isSupabaseConfigured).toBe('boolean');
   });
 
   it('exposes the secret-key guard as a boolean for the runtime check', () => {

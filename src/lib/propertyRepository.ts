@@ -1,133 +1,157 @@
 /**
- * Property catalogue access.
- *
- * Two sources are supported and the choice is automatic:
- *   1. Supabase `public.properties`, when the project is configured.
- *   2. The bundled `src/data/properties.json`, when it is not.
- *
- * This is what lets the guest experience work on a fresh clone with no database:
- * browsing, filtering and the calculator are unaffected. Saving requires an
- * account, which requires Supabase.
- *
- * Admin reads use the same table. RLS decides what each caller can see and do, so
- * there is no client-side privilege check that could be bypassed.
+ * The catalogue is read from Supabase whenever the application is configured.
+ * The bundled source dataset is only used for an unconfigured local preview; a
+ * live database error is surfaced instead of silently showing stale properties.
  */
 
 import { getSupabaseClient, supabaseAvailable } from './supabase';
-import { toCatalog } from './mappers';
-import type { Property } from '../types/property';
+import { rowToProperty, rowToPropertyMedia } from './mappers';
+import { buildBundledCatalog } from './propertyAdapter';
+import type { Property, PropertyWithCalculations } from '../types/property';
 import type { PropertyRow } from './database.types';
-import localProperties from '../data/properties.json';
+import { toUncalculatedProperties } from '../utils/propertyFilter';
 
 export interface CatalogResult {
   properties: Property[];
-  /**
-   * Rows present in the database but missing a usable price, so they were
-   * excluded from the calculation feed. Surfaced so the UI can mention them
-   * rather than quietly showing fewer properties.
-   */
   unpriced: number;
-  /** Where the data came from, for honest display in the UI and tests. */
-  source: 'supabase' | 'bundled-demo';
-  /** Populated when the database was expected but could not be read. */
+  source: 'supabase' | 'bundled-source';
   error?: string;
 }
 
-const bundledRows = localProperties as Property[];
-
-/** The bundled catalogue, used when no database is configured or a read fails. */
-export function bundledCatalog(): CatalogResult {
-  const { properties, unpriced } = toCatalog(
-    // The bundled JSON already matches the domain shape; run it through the same
-    // price-validation path so both sources behave identically.
-    bundledRows.map((row) => ({
-      id: row.id,
-      property_name: row.propertyName,
-      location: row.location,
-      price_myr: row.priceMYR,
-      property_type: row.propertyType,
-      bedrooms: row.bedrooms,
-      bathrooms: row.bathrooms,
-      built_up_sqft: row.builtUpSqft,
-      source_url: row.sourceUrl,
-      verified_date: row.verifiedDate,
-      is_example: row.isExample,
-      is_published: true,
-      created_by: null,
-      created_at: '',
-      updated_at: '',
-    })) satisfies PropertyRow[]
-  );
-
-  return { properties, unpriced, source: 'bundled-demo' };
+export function filterPublicCatalogueRows<T extends { is_example: boolean }>(rows: T[]): T[] {
+  return rows.filter((row) => !row.is_example);
 }
 
-/** Columns needed by the calculator. Selecting explicitly keeps payloads small. */
-const CATALOG_COLUMNS =
-  'id, property_name, location, price_myr, property_type, bedrooms, bathrooms, built_up_sqft, source_url, verified_date, is_example, is_published, created_by, created_at, updated_at';
+const bundledProperties = buildBundledCatalog();
 
-/**
- * Load the public catalogue.
- *
- * Only published rows are visible to anonymous and ordinary signed-in users; the
- * RLS policy enforces that, so this query does not filter by hand. An
- * administrator additionally sees unpublished rows, which is intentional: the
- * public list must not show them, but the admin screen must.
- */
-export async function fetchCatalog(options: { includeUnpublished?: boolean } = {}): Promise<CatalogResult> {
+export function bundledCatalog(): CatalogResult {
+  return {
+    properties: bundledProperties,
+    unpriced: 0,
+    source: 'bundled-source',
+  };
+}
+
+function unavailableCatalog(message: string): CatalogResult {
+  return { properties: [], unpriced: 0, source: 'supabase', error: message };
+}
+
+export function keepLoadedMedia<T>(rows: Array<T | null>): T[] {
+  return rows.filter((row): row is T => row !== null);
+}
+
+async function loadMedia(propertyIds: string[]) {
+  if (propertyIds.length === 0) return { rows: [], error: null };
+  const client = await getSupabaseClient();
+  if (!client) return { rows: [], error: 'Property media could not be loaded.' };
+
+  const { data, error } = await client
+    .from('property_media')
+    .select('*')
+    .in('property_id', propertyIds)
+    .order('sort_order', { ascending: true });
+
+  if (error) return { rows: [], error: 'Property media could not be loaded.' };
+
+  const rows = await Promise.all(
+    (data ?? []).map(async (row) => {
+      if (!row.storage_path) return row;
+      const { data: signed, error: signedError } = await client.storage
+        .from('property-media')
+        .createSignedUrl(row.storage_path, 60 * 15);
+      return signedError || !signed ? null : { ...row, url: signed.signedUrl };
+    })
+  );
+
+  const failedRows = rows.some((row) => row === null);
+  return {
+    rows: keepLoadedMedia(rows),
+    ...(failedRows ? { error: 'Some property media could not be loaded.' } : { error: null }),
+  };
+}
+
+function attachMedia(
+  rows: PropertyRow[],
+  mediaRows: Awaited<ReturnType<typeof loadMedia>>['rows']
+): Property[] {
+  const mediaByProperty = new Map<string, ReturnType<typeof rowToPropertyMedia>[]>();
+  for (const media of mediaRows) {
+    const current = mediaByProperty.get(media.property_id) ?? [];
+    current.push(rowToPropertyMedia(media));
+    mediaByProperty.set(media.property_id, current);
+  }
+
+  return rows.flatMap((row) => {
+    const property = rowToProperty(row);
+    if (!property) return [];
+    return [{ ...property, media: mediaByProperty.get(row.id) ?? [] }];
+  });
+}
+
+export async function fetchCatalog(
+  options: { includeUnpublished?: boolean } = {}
+): Promise<CatalogResult> {
   const client = await getSupabaseClient();
   if (!client) return bundledCatalog();
 
-  let query = client.from('properties').select(CATALOG_COLUMNS).order('price_myr', {
+  let query = client.from('properties').select('*').order('price_myr', {
     ascending: true,
     nullsFirst: false,
   });
 
-  if (!options.includeUnpublished) {
-    // Explicit filter as well as the RLS policy: defence in depth, and it keeps
-    // anonymous results identical regardless of policy changes.
-    query = query.eq('is_published', true);
-  }
+  if (!options.includeUnpublished) query = query.eq('is_published', true);
 
   const { data, error } = await query;
-
   if (error || !data) {
-    // Fall back rather than breaking the page. The message is deliberately
-    // generic: Supabase errors can name tables and policies.
-    return {
-      ...bundledCatalog(),
-      error: 'The property database could not be read, so bundled demo data is shown.',
-    };
+    return unavailableCatalog(
+      'The property database could not be read. Apply the Supabase migrations and try again.'
+    );
   }
 
-  const { properties, unpriced } = toCatalog(data as PropertyRow[]);
-  return { properties, unpriced, source: 'supabase' };
+  const currentRows = filterPublicCatalogueRows(data);
+  if (currentRows.length === 0) {
+    return unavailableCatalog(
+      'No real property records are available. Review and apply 0004_property_catalogue.sql to import SP-001–SP-004.'
+    );
+  }
+  const pricedRows = currentRows.filter(
+    (row): row is PropertyRow => row.price_myr !== null && Number(row.price_myr) > 0
+  );
+  const mediaResult = await loadMedia(pricedRows.map((row) => row.id));
+
+  return {
+    properties: attachMedia(pricedRows, mediaResult.rows),
+    unpriced: currentRows.length - pricedRows.length,
+    source: 'supabase',
+    ...(mediaResult.error ? { error: mediaResult.error } : {}),
+  };
 }
 
-/** Fetch a single property by id, or null when it is not visible to this user. */
 export async function fetchPropertyById(id: string): Promise<Property | null> {
   const client = await getSupabaseClient();
-  if (!client) {
-    const found = bundledRows.find((property) => property.id === id);
-    return found && found.priceMYR > 0 ? found : null;
-  }
+  if (!client) return bundledProperties.find((property) => property.id === id) ?? null;
 
   const { data, error } = await client
     .from('properties')
-    .select(CATALOG_COLUMNS)
+    .select('*')
     .eq('id', id)
+    .eq('is_published', true)
+    .eq('is_example', false)
     .maybeSingle();
 
-  if (error || !data) {
-    const found = bundledRows.find((property) => property.id === id);
-    return found && found.priceMYR > 0 ? found : null;
-  }
+  if (error || !data || data.price_myr === null || Number(data.price_myr) <= 0) return null;
 
-  const { properties } = toCatalog([data as PropertyRow]);
-  return properties[0] ?? null;
+  const mediaResult = await loadMedia([id]);
+  return attachMedia(
+    [data as PropertyRow],
+    mediaResult.rows
+  )[0] ?? null;
 }
 
-/** True when the app is reading the live catalogue rather than demo data. */
+export function toUncalculatedCatalog(properties: Property[]): PropertyWithCalculations[] {
+  return toUncalculatedProperties(properties);
+}
+
 export function isLiveCatalog(): boolean {
   return supabaseAvailable;
 }

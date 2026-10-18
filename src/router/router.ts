@@ -94,7 +94,11 @@ export function redirect(route: Route | string): void {
 
 function currentHash(): string {
   if (typeof window === 'undefined') return '#/';
-  return window.location.hash || '#/';
+  if (window.location.hash) return window.location.hash;
+  if (/^\/auth\/(callback|reset)\/?$/i.test(window.location.pathname)) {
+    return `#${window.location.pathname.replace(/\/$/, '')}`;
+  }
+  return '#/';
 }
 
 /**
@@ -109,9 +113,15 @@ export function useRoute(): Route {
   useEffect(() => {
     const onChange = () => setRoute(parseRoute(currentHash()));
     window.addEventListener('hashchange', onChange);
-    // Normalise a bare URL to '#/' so subsequent comparisons are consistent.
+    // Convert Cloudflare/Supabase auth callback paths into hash routes while
+    // preserving query parameters such as the PKCE authorization code.
     if (!window.location.hash) {
-      window.history.replaceState(null, '', `${window.location.pathname}#/`);
+      const initialHash = currentHash();
+      window.history.replaceState(
+        null,
+        '',
+        `${window.location.pathname}${window.location.search}${initialHash}`
+      );
     }
     return () => window.removeEventListener('hashchange', onChange);
   }, []);

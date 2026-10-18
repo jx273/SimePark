@@ -8,25 +8,30 @@ import ScenarioSimulator from '../components/ScenarioSimulator';
 import AssistantChat from '../components/AssistantChat';
 import HowItWorks from '../components/HowItWorks';
 import CompareTray from '../components/CompareTray';
+import BankRateComparison from '../components/BankRateComparison';
 import { useAuth } from '../auth/AuthProvider';
 import { useSelection } from '../state/SelectionProvider';
 import { createScenario } from '../lib/userRepository';
 import { calculateAffordability } from '../utils/affordability';
-import { enrichPropertiesWithCalculations } from '../utils/propertyFilter';
-import { NEUTRAL_BASE } from '../utils/simulator';
+import { enrichPropertiesWithCalculations, toUncalculatedProperties } from '../utils/propertyFilter';
 import { MAX_COMPARISON } from '../state/SelectionProvider';
 import type { AffordabilityInputs, AffordabilityResult } from '../types/affordability';
 import type { Property, PropertyWithCalculations } from '../types/property';
 
 interface HomePageProps {
-  /** Catalogue loaded from Supabase or the bundled demo dataset. */
+  /** Catalogue loaded from Supabase or the supplied unconfigured-dev fixture. */
   properties: Property[];
   /** True while the catalogue is still loading on first paint. */
   isLoading: boolean;
   catalogError: string | null;
   unpricedCount: number;
+  affordabilityInputs: AffordabilityInputs | null;
+  affordabilityResult: AffordabilityResult | null;
+  onSubmitAffordability: (inputs: AffordabilityInputs) => void;
   onNavigateSection: (section: string) => void;
   onOpenProperty: (property: PropertyWithCalculations) => void;
+  importedRate: number | null;
+  onImportRate: (rate: number | null) => void;
 }
 
 export default function HomePage({
@@ -34,8 +39,13 @@ export default function HomePage({
   isLoading,
   catalogError,
   unpricedCount,
+  affordabilityInputs,
+  affordabilityResult,
+  onSubmitAffordability,
   onNavigateSection,
   onOpenProperty,
+  importedRate,
+  onImportRate,
 }: HomePageProps) {
   const { t } = useTranslation();
   const { user, isConfigured } = useAuth();
@@ -49,45 +59,27 @@ export default function HomePage({
     clearComparison,
   } = useSelection();
 
-  const [userInputs, setUserInputs] = useState<AffordabilityInputs | null>(null);
-  const [affordabilityResult, setAffordabilityResult] = useState<AffordabilityResult | null>(null);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
 
   const handleAffordabilitySubmit = useCallback(
     (inputs: AffordabilityInputs) => {
-      setUserInputs(inputs);
-      setAffordabilityResult(calculateAffordability(inputs));
+      onSubmitAffordability(inputs);
       window.setTimeout(() => onNavigateSection('results'), 120);
     },
-    [onNavigateSection]
+    [onNavigateSection, onSubmitAffordability]
   );
 
-  const enrichedProperties: PropertyWithCalculations[] = useMemo(
+  const explorerProperties: PropertyWithCalculations[] = useMemo(
     () =>
-      userInputs && affordabilityResult
-        ? enrichPropertiesWithCalculations(properties, userInputs, affordabilityResult)
-        : [],
-    [properties, userInputs, affordabilityResult]
+      affordabilityInputs && affordabilityResult
+        ? enrichPropertiesWithCalculations(properties, affordabilityInputs, affordabilityResult)
+        : toUncalculatedProperties(properties),
+    [properties, affordabilityInputs, affordabilityResult]
   );
-
-  /**
-   * What the explorer lists. Before a personalised estimate exists the catalogue
-   * is enriched against a neutral baseline, so guests see real prices, estimated
-   * repayments and down-payment requirements while the explorer states plainly
-   * that the budget status is not yet personalised.
-   */
-  const explorerProperties = useMemo(() => {
-    if (enrichedProperties.length > 0) return enrichedProperties;
-    return enrichPropertiesWithCalculations(
-      properties,
-      NEUTRAL_BASE,
-      calculateAffordability(NEUTRAL_BASE)
-    );
-  }, [enrichedProperties, properties]);
 
   const comparisonProperties = useMemo(
-    () => enrichedProperties.filter((property) => comparisonIds.includes(property.id)),
-    [enrichedProperties, comparisonIds]
+    () => explorerProperties.filter((property) => comparisonIds.includes(property.id)),
+    [explorerProperties, comparisonIds]
   );
 
   const handleSaveScenario = useCallback(
@@ -122,13 +114,13 @@ export default function HomePage({
 
       <AffordabilityForm
         onSubmit={handleAffordabilitySubmit}
-        initialInputs={userInputs}
+        initialInputs={affordabilityInputs}
       />
 
       {affordabilityResult && <AffordabilityResults result={affordabilityResult} />}
 
       {/* Catalogue state is stated plainly: the user should know whether they are
-          looking at the live database or the bundled demonstration records. */}
+          looking at the live database or the bundled source fixture. */}
       {(catalogError || unpricedCount > 0 || (!isLoading && properties.length === 0)) && (
         <div className="container">
           <div className="notice notice--info" role="status">
@@ -151,7 +143,7 @@ export default function HomePage({
         // baseline otherwise, so guests can still browse real prices.
         properties={explorerProperties}
         totalCount={properties.length}
-        preferences={userInputs}
+        preferences={affordabilityInputs}
         onViewDetails={onOpenProperty}
         isSaved={isSaved}
         isCompared={isCompared}
@@ -163,16 +155,27 @@ export default function HomePage({
       />
 
       <ScenarioSimulator
-        baseInputs={userInputs}
+        baseInputs={affordabilityInputs}
         baseResult={affordabilityResult}
+        importedRate={importedRate}
+        onClearImportedRate={() => onImportRate(null)}
         onSaveScenario={handleSaveScenario}
         canSave={Boolean(user && isConfigured)}
       />
 
+      <BankRateComparison
+        baseInputs={affordabilityInputs}
+        baseResult={affordabilityResult}
+        onApplyRate={(rate) => {
+          onImportRate(rate);
+          onNavigateSection('simulator');
+        }}
+      />
+
       <AssistantChat
-        userInputs={userInputs}
+        userInputs={affordabilityInputs}
         affordabilityResult={affordabilityResult}
-        properties={enrichedProperties}
+        properties={explorerProperties}
         selectedProperty={null}
         comparisonProperties={comparisonProperties}
         onNavigate={onNavigateSection}

@@ -1,0 +1,146 @@
+{
+  "SP-001": {
+    "name": "Park View @ Taman Juru Setia",
+    "sourceFolder": "SP-002",
+    "entries": [
+      {
+        "file": "/media/SP-001/SP-001-photo-1.jpg",
+        "kind": "photo",
+        "sourceFile": "Park-View-Taman-Juru-Setia-Seberang-Perai-Malaysia.jpg",
+        "order": 1
+      },
+      {
+        "file": "/media/SP-001/SP-001-photo-2.jpg",
+        "kind": "photo",
+        "sourceFile": "Park-View-Taman-Juru-Setia-Seberang-Perai-Malaysia (1).jpg",
+        "order": 2
+      },
+      {
+        "file": "/media/SP-001/SP-001-photo-3.jpg",
+        "kind": "photo",
+        "sourceFile": "Park-View-Taman-Juru-Setia-Seberang-Perai-Malaysia (2).jpg",
+        "order": 3
+      },
+      {
+        "file": "/media/SP-001/SP-001-photo-4.jpg",
+        "kind": "photo",
+        "sourceFile": "Park-View-Taman-Juru-Setia-Seberang-Perai-Malaysia (3).jpg",
+        "order": 4
+      },
+      {
+        "file": "/media/SP-001/SP-001-photo-5.jpg",
+        "kind": "photo",
+        "sourceFile": "Park-View-Taman-Juru-Setia-Seberang-Perai-Malaysia (4).jpg",
+        "order": 5
+      }
+    ]
+  },
+  "SP-002": {
+    "name": "Bandar Putra Mak Lagam Kemaman",
+    "sourceFolder": "SP-003",
+    "entries": [
+      {
+        "file": "/media/SP-002/SP-002-photo-1.jpg",
+        "kind": "photo",
+        "sourceFile": "Bandar-Putra-Mak-Lagam-Kemaman-Terengganu-Malaysia.jpg",
+        "order": 1
+      },
+      {
+        "file": "/media/SP-002/SP-002-photo-2.jpg",
+        "kind": "photo",
+        "sourceFile": "Bandar-Putra-Mak-Lagam-Kemaman-Terengganu-Malaysia (1).jpg",
+        "order": 2
+      },
+      {
+        "file": "/media/SP-002/SP-002-photo-3.jpg",
+        "kind": "photo",
+        "sourceFile": "Bandar-Putra-Mak-Lagam-Kemaman-Terengganu-Malaysia (2).jpg",
+        "order": 3
+      },
+      {
+        "file": "/media/SP-002/SP-002-photo-4.jpg",
+        "kind": "photo",
+        "sourceFile": "Bandar-Putra-Mak-Lagam-Kemaman-Terengganu-Malaysia (3).jpg",
+        "order": 4
+      },
+      {
+        "file": "/media/SP-002/SP-002-photo-5.jpg",
+        "kind": "photo",
+        "sourceFile": "Bandar-Putra-Mak-Lagam-Kemaman-Terengganu-Malaysia (4).jpg",
+        "order": 5
+      }
+    ]
+  },
+  "SP-003": {
+    "name": "Cappella Embassy",
+    "sourceFolder": "SP-004",
+    "entries": [
+      {
+        "file": "/media/SP-003/SP-003-photo-1.jpg",
+        "kind": "photo",
+        "sourceFile": "Cappella-Embassy-Kuala-Lumpur-Malaysia.jpg",
+        "order": 1
+      },
+      {
+        "file": "/media/SP-003/SP-003-photo-2.jpg",
+        "kind": "photo",
+        "sourceFile": "Cappella-Embassy-Kuala-Lumpur-Malaysia (1).jpg",
+        "order": 2
+      },
+      {
+        "file": "/media/SP-003/SP-003-photo-3.jpg",
+        "kind": "photo",
+        "sourceFile": "Cappella-Embassy-Kuala-Lumpur-Malaysia (2).jpg",
+        "order": 3
+      },
+      {
+        "file": "/media/SP-003/SP-003-photo-4.jpg",
+        "kind": "photo",
+        "sourceFile": "Cappella-Embassy-Kuala-Lumpur-Malaysia (3).jpg",
+        "order": 4
+      },
+      {
+        "file": "/media/SP-003/SP-003-floorplan-1.jpg",
+        "kind": "floorplan",
+        "sourceFile": "PUFLO.391968510.R1500X1500.jpg",
+        "order": 1
+      }
+    ]
+  },
+  "SP-004": {
+    "name": "Vogue Suites One",
+    "sourceFolder": "SP-001",
+    "entries": [
+      {
+        "file": "/media/SP-004/SP-004-photo-1.jpg",
+        "kind": "photo",
+        "sourceFile": "Vogue-Suites-One-KL-Eco-City-Malaysia.jpg",
+        "order": 1
+      },
+      {
+        "file": "/media/SP-004/SP-004-photo-2.jpg",
+        "kind": "photo",
+        "sourceFile": "Vogue-Suites-One-KL-Eco-City-Malaysia (1).jpg",
+        "order": 2
+      },
+      {
+        "file": "/media/SP-004/SP-004-photo-3.jpg",
+        "kind": "photo",
+        "sourceFile": "Vogue-Suites-One-KL-Eco-City-Malaysia (2).jpg",
+        "order": 3
+      },
+      {
+        "file": "/media/SP-004/SP-004-photo-4.jpg",
+        "kind": "photo",
+        "sourceFile": "Vogue-Suites-One-KL-Eco-City-Malaysia (3).jpg",
+        "order": 4
+      },
+      {
+        "file": "/media/SP-004/SP-004-floorplan-1.jpeg",
+        "kind": "floorplan",
+        "sourceFile": "UFLOO.316834744.F1440X540.jpeg",
+        "order": 1
+      }
+    ]
+  }
+}

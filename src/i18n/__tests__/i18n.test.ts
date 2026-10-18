@@ -81,6 +81,12 @@ describe('translation completeness', () => {
     expect(ms.status.withinBudget).not.toBe(en.status.withinBudget);
   });
 
+  it('provides localized bank-rate comparison labels', () => {
+    expect(en.bankRates.title).not.toBe('bankRates.title');
+    expect(ms.bankRates.title).not.toBe(en.bankRates.title);
+    expect(zh.bankRates.title).not.toBe(en.bankRates.title);
+  });
+
   it('keeps interpolation placeholders intact in every language', () => {
     // A dropped {{count}} or {{amount}} would render a broken sentence.
     const placeholders = (text: string) =>

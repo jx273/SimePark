@@ -1,0 +1,41 @@
+.property-map {
+  min-height: 24rem;
+  height: min(58vh, 38rem);
+  overflow: hidden;
+  border-radius: var(--border-radius);
+  background: var(--color-bg-section);
+  z-index: 0;
+}
+
+.property-map__unavailable {
+  display: grid;
+  min-height: 14rem;
+  place-items: center;
+  padding: var(--space-xl);
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.property-map__note,
+.property-map__attribution {
+  margin-top: var(--space-sm);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.leaflet-popup-content p {
+  margin: var(--space-xs) 0 var(--space-sm);
+}
+
+.leaflet-popup-content button {
+  color: var(--color-primary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .property-map {
+    min-height: 20rem;
+    height: 48vh;
+  }
+}

@@ -62,7 +62,9 @@ export default function PropertyCard({
         </div>
 
         <div className="property-card__tags">
-          <span className="badge badge--type">{property.propertyType}</span>
+          <span className="badge badge--type">
+            {property.propertyType ?? t('common.unknown')}
+          </span>
           {property.bedrooms !== null ? (
             <span className="badge badge--type">
               {property.bedrooms} {t('detail.bedrooms')}
@@ -99,10 +101,14 @@ export default function PropertyCard({
             <span className="property-card__finance-label">{t('card.yourCash')}</span>
             <span
               className={`property-card__finance-value ${
-                property.cashShortfall > 0 ? 'property-card__finance-value--warning' : ''
+                property.cashShortfall !== null && property.cashShortfall > 0
+                  ? 'property-card__finance-value--warning'
+                  : ''
               }`}
             >
-              {property.cashShortfall > 0
+              {property.budgetStatus === 'uncalculated'
+                ? t('status.notCalculated')
+                : property.cashShortfall !== null && property.cashShortfall > 0
                 ? t('card.cashShort', { amount: formatMYR(property.cashShortfall) })
                 : formatMYR(property.downPaymentApplied)}
             </span>
@@ -111,6 +117,7 @@ export default function PropertyCard({
             <span className="property-card__finance-label">{t('card.estDsr')}</span>
             <span
               className={`property-card__finance-value ${
+                property.estimatedDSR !== null &&
                 property.estimatedDSR > ILLUSTRATIVE_DSR_CAP
                   ? 'property-card__finance-value--warning'
                   : ''
@@ -121,7 +128,9 @@ export default function PropertyCard({
           </div>
         </div>
 
-        <p className="property-card__explanation">{property.matchExplanation}</p>
+        {property.matchExplanation && (
+          <p className="property-card__explanation">{property.matchExplanation}</p>
+        )}
 
         <div className="property-card__actions">
           <button
@@ -156,7 +165,9 @@ export default function PropertyCard({
 
         <div className="property-card__footer">
           <span className="property-card__score">
-            {t('card.match')}: {property.matchScore}/100
+            {property.budgetStatus === 'uncalculated'
+              ? t('status.notCalculated')
+              : `${t('card.match')}: ${property.matchScore}/100`}
           </span>
           <button
             type="button"

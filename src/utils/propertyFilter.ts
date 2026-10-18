@@ -1,5 +1,5 @@
 /**
- * Property filtering, scoring, and ranking utilities.
+ * Property filtering, scoring, ranking, and the "uncalculated" state.
  *
  * Affordability model (must stay consistent with src/utils/affordability.ts):
  * - The user's available down payment is CASH THEY ACTUALLY HAVE. It is applied
@@ -10,9 +10,24 @@
  *   reported as such rather than being quietly assumed away.
  * - A property counts as affordable only when BOTH the estimated monthly
  *   repayment fits the monthly budget AND the required down payment is covered.
+ *
+ * UNCALCULATED STATE
+ * Independent property search must work before the calculator is used. In that
+ * state the budget-dependent fields are NULL and the status is 'uncalculated',
+ * never 0 or a fabricated verdict.
+ *
+ * FACILITY FILTERING
+ * `facilities` is a normalized array per property. An active facility filter is a
+ * conjunction (every selected facility must be present) and matching is
+ * case-insensitive. Only genuinely synonymous wording is aliased; a property is
+ * never treated as having a facility it does not list.
  */
 
-import { Property, PropertyWithCalculations, PropertyBudgetStatus } from '../types/property';
+import {
+  Property,
+  PropertyWithCalculations,
+  PropertyBudgetStatus,
+} from '../types/property';
 import {
   AffordabilityInputs,
   AffordabilityResult,
@@ -22,15 +37,42 @@ import { calculateMonthlyMortgage } from './mortgage';
 import { calculateDSR } from './dsr';
 import { sanitizeAffordabilityInputs } from './affordability';
 
+/* ------------------------------------------------------------------ */
+/* Uncalculated state                                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Enrich properties without any affordability calculation.
+ *
+ * This is the state an independent search starts in. Every budget-dependent
+ * field is null and `budgetStatus` is 'uncalculated', so the UI must render a
+ * neutral placeholder rather than "Within budget" or "Over budget".
+ */
+export function toUncalculatedProperties(properties: Property[]): PropertyWithCalculations[] {
+  return properties.map((property) => ({
+    ...property,
+    estimatedMonthlyMortgage: null,
+    requiredDownPayment: null,
+    downPaymentApplied: null,
+    cashShortfall: null,
+    loanPrincipal: null,
+    estimatedDSR: null,
+    isAffordable: null,
+    budgetStatus: 'uncalculated' as PropertyBudgetStatus,
+    // Neutral ordering score only; not a recommendation or a match verdict.
+    matchScore: 0,
+    matchExplanation: '',
+  }));
+}
+
+/* ------------------------------------------------------------------ */
+/* Calculated state                                                   */
+/* ------------------------------------------------------------------ */
+
 /**
  * Enrich properties with affordability calculations for a given user profile.
  *
  * Inputs are sanitised first, so this is safe to call with raw form values.
- *
- * @param properties - Array of raw property records
- * @param inputs - User's affordability inputs
- * @param result - Calculated affordability result
- * @returns Array of properties enriched with calculation data
  */
 export function enrichPropertiesWithCalculations(
   properties: Property[],
@@ -142,7 +184,10 @@ function calculateMatchScore(
     Number.isFinite(estimatedMonthlyMortgage);
 
   // Budget fit (40 points)
-  if (isAffordable || (hasComparableBudget && estimatedMonthlyMortgage <= result.estimatedMortgageBudget)) {
+  if (
+    isAffordable ||
+    (hasComparableBudget && estimatedMonthlyMortgage <= result.estimatedMortgageBudget)
+  ) {
     // Properties closer to budget (but under) score higher
     if (hasComparableBudget) {
       const budgetRatio = estimatedMonthlyMortgage / result.estimatedMortgageBudget;
@@ -150,13 +195,12 @@ function calculateMatchScore(
       if (budgetRatio >= 0.6 && budgetRatio <= 0.9) {
         score += 40;
       } else if (budgetRatio < 0.6) {
-        score += 30; // Well under budget
+        score += 30;
       } else {
-        score += 25; // Close to budget limit
+        score += 25;
       }
     }
   } else if (hasComparableBudget) {
-    // Over budget, reduce score based on how much over
     const overRatio = estimatedMonthlyMortgage / result.estimatedMortgageBudget;
     score += Math.max(0, 15 - (overRatio - 1) * 20);
   }
@@ -166,7 +210,7 @@ function calculateMatchScore(
   if (locationRank === 'match') {
     score += 25;
   } else if (locationRank === 'none') {
-    score += 15; // No preference, partial credit
+    score += 15;
   }
 
   // Bedroom match (20 points)
@@ -174,10 +218,10 @@ function calculateMatchScore(
     if (property.bedrooms !== null && property.bedrooms >= inputs.minBedrooms) {
       score += 20;
     } else if (property.bedrooms === null) {
-      score += 10; // Unknown, partial credit
+      score += 10;
     }
   } else {
-    score += 15; // No preference, partial credit
+    score += 15;
   }
 
   // Down payment feasibility (15 points)
@@ -193,8 +237,8 @@ function calculateMatchScore(
 
 /**
  * Compare a property's location against a user preference.
- * Matching is case-insensitive substring matching in either direction so that
- * "Kuala Lumpur" matches "Cheras, Kuala Lumpur".
+ * Case-insensitive substring matching in either direction so "Kuala Lumpur"
+ * matches "Ampang Hilir, Kuala Lumpur".
  *
  * @returns 'match', 'mismatch', or 'none' when there is no preference
  */
@@ -213,9 +257,7 @@ export function compareLocation(
     : 'mismatch';
 }
 
-/**
- * Generate a human-readable match explanation.
- */
+/** Generate a human-readable match explanation. */
 function generateMatchExplanation(
   property: Property,
   inputs: AffordabilityInputs,
@@ -271,106 +313,201 @@ function generateMatchExplanation(
   return reasons.join(' ');
 }
 
+/* ------------------------------------------------------------------ */
+/* Filters                                                            */
+/* ------------------------------------------------------------------ */
+
 export interface PropertyFilters {
+  /** Free-text location query; matched against location and the recorded address */
   location: string;
   propertyType: string;
   minBedrooms: number;
+  maxBedrooms: number;
+  minPrice: number;
   maxPrice: number;
+  minBathrooms: number;
+  minBuiltUpSqft: number;
+  /** Every selected facility must be present on the property */
+  facilities: string[];
   affordableOnly: boolean;
 }
 
 export type SortOption = 'match' | 'price-asc' | 'price-desc' | 'mortgage-asc';
 
 export const DEFAULT_FILTERS: PropertyFilters = {
-  location: 'All',
+  location: '',
   propertyType: 'All',
   minBedrooms: 0,
+  maxBedrooms: 0,
+  minPrice: 0,
   maxPrice: 0,
+  minBathrooms: 0,
+  minBuiltUpSqft: 0,
+  facilities: [],
   affordableOnly: false,
 };
 
 /**
- * Build explorer filters from the preferences submitted with the form, so that
- * a chosen preferred location and minimum bedrooms actually filter the list
- * rather than only affecting the match score.
+ * Seed filters from submitted preferences.
+ *
+ * `location` is a free-text query, so a preference for "Kuala Lumpur" simply
+ * becomes that query. It is not constrained to a fixed dropdown value.
  */
 export function filtersFromPreferences(
   inputs: AffordabilityInputs | null | undefined
 ): PropertyFilters {
   const preferredLocation = (inputs?.preferredLocation || '').trim();
-  const minBedrooms = inputs?.minBedrooms && inputs.minBedrooms > 0
-    ? Math.floor(inputs.minBedrooms)
-    : 0;
+  const minBedrooms =
+    inputs?.minBedrooms && inputs.minBedrooms > 0 ? Math.floor(inputs.minBedrooms) : 0;
 
   return {
     ...DEFAULT_FILTERS,
-    location: preferredLocation || DEFAULT_FILTERS.location,
+    location: preferredLocation,
     minBedrooms,
   };
+}
+
+/**
+ * How a facility label is matched against a property's facility list.
+ *
+ * Only genuinely synonymous wording is aliased. Nothing is inferred: a property
+ * is never treated as having a facility it does not list.
+ */
+const FACILITY_ALIASES: Record<string, string[]> = {
+  gym: ['gym', 'gymnasium', 'fitness centre', 'fitness center'],
+  'swimming pool': ['swimming pool', 'pool'],
+  parking: ['covered car park', 'car park', 'parking', 'parking bay'],
+  security: [
+    '24-hour security',
+    'security',
+    'guarded & gated',
+    'gated guarded 24 hours',
+    'gated guarded',
+  ],
+  playground: ['kids playground', 'playground'],
+  'jogging track': ['jogging track'],
+  bbq: ['bbq', 'barbecue'],
+  jacuzzi: ['jacuzzi'],
+  'multi-purpose hall': ['multi-purpose hall', 'multipurpose hall'],
+  'business centre': ['business centre', 'business center'],
+  'badminton hall': ['badminton hall'],
+  'basketball court': ['basketball court'],
+  'meditation pavilion': ['meditation pavilion'],
+  'sky bar': ['sky bar'],
+};
+
+/** True when a property lists the requested facility. */
+export function hasFacility(property: Property, facility: string): boolean {
+  const wanted = facility.trim().toLowerCase();
+  if (!wanted) return false;
+
+  const aliases = FACILITY_ALIASES[wanted] ?? [wanted];
+  const owned = (property.facilities ?? []).map((item) => item.toLowerCase());
+
+  return owned.some((item) => aliases.some((alias) => item === alias || item.includes(alias)));
+}
+
+/**
+ * The facility options actually present in a catalogue, de-duplicated and mapped
+ * onto canonical labels.
+ *
+ * Options are derived from the records rather than hard-coded, so a control can
+ * never offer a facility that no property has.
+ */
+export function availableFacilities(properties: Property[]): string[] {
+  const map = new Map<string, string>();
+
+  const canonical = (label: string): string => {
+    const lower = label.toLowerCase();
+    for (const [key, aliases] of Object.entries(FACILITY_ALIASES)) {
+      if (aliases.some((alias) => lower === alias || lower.includes(alias))) {
+        return key.replace(/\b\w/g, (char) => char.toUpperCase());
+      }
+    }
+    return label;
+  };
+
+  for (const property of properties) {
+    for (const facility of property.facilities ?? []) {
+      const label = canonical(facility);
+      const key = label.toLowerCase();
+      if (!map.has(key)) map.set(key, label);
+    }
+  }
+
+  return [...map.values()].sort((a, b) => a.localeCompare(b));
 }
 
 export interface FilterResult {
   properties: PropertyWithCalculations[];
   /**
-   * How many properties were excluded only because a minimum-bedroom filter is
-   * active and their bedroom count is unknown. Reported so the UI can explain
-   * the omission instead of hiding it.
+   * How many properties were excluded only because a bedroom filter is active
+   * and their bedroom count is unknown.
    */
   hiddenUnknownBedrooms: number;
 }
 
 /**
- * Filter properties based on user preferences and filters.
+ * Filter properties.
  *
- * Unknown bedroom counts are treated as NOT meeting an active minimum-bedroom
- * filter (missing data is never treated as zero, and never silently assumed to
- * qualify). When no bedroom filter is active, those properties stay visible.
+ * Filters are conjunctive and applied to the CURRENT filter values, so the
+ * displayed controls, the count and the results cannot disagree.
+ *
+ * Unknown bedroom counts are treated as not meeting an active bedroom filter.
+ * Missing data is never treated as zero and never assumed to qualify.
  */
 export function filterPropertiesWithMeta(
   properties: PropertyWithCalculations[],
   filters: PropertyFilters
 ): FilterResult {
   const minBedrooms = filters.minBedrooms > 0 ? filters.minBedrooms : 0;
+  const maxBedrooms = filters.maxBedrooms > 0 ? filters.maxBedrooms : 0;
+  const locationQuery = filters.location.trim();
+
   let hiddenUnknownBedrooms = 0;
 
-  const filtered = properties.filter((p) => {
-    // Location filter (case-insensitive substring, either direction)
-    if (filters.location && filters.location !== 'All') {
-      if (compareLocation(p.location, filters.location) !== 'match') {
-        return false;
-      }
+  const filtered = properties.filter((property) => {
+    // Location: free text, matched against area and the recorded project address.
+    if (locationQuery && locationQuery.toLowerCase() !== 'all') {
+      const haystack = `${property.location} ${property.address ?? ''}`.toLowerCase();
+      if (!haystack.includes(locationQuery.toLowerCase())) return false;
     }
 
-    // Property type filter
     if (filters.propertyType && filters.propertyType !== 'All') {
-      if (p.propertyType !== filters.propertyType) {
-        return false;
-      }
+      if (property.propertyType !== filters.propertyType) return false;
     }
 
-    // Bedrooms filter
-    if (minBedrooms > 0) {
-      if (p.bedrooms === null) {
+    if (minBedrooms > 0 || maxBedrooms > 0) {
+      if (property.bedrooms === null) {
         hiddenUnknownBedrooms += 1;
         return false;
       }
-      if (p.bedrooms < minBedrooms) {
+      if (minBedrooms > 0 && property.bedrooms < minBedrooms) return false;
+      if (maxBedrooms > 0 && property.bedrooms > maxBedrooms) return false;
+    }
+
+    if (filters.minBathrooms > 0) {
+      if (property.bathrooms === null || property.bathrooms < filters.minBathrooms) return false;
+    }
+
+    if (filters.minBuiltUpSqft > 0) {
+      if (property.builtUpSqft === null || property.builtUpSqft < filters.minBuiltUpSqft) {
         return false;
       }
     }
 
-    // Max price filter
-    if (filters.maxPrice && filters.maxPrice > 0) {
-      if (p.priceMYR > filters.maxPrice) {
-        return false;
-      }
+    if (filters.minPrice > 0 && property.priceMYR < filters.minPrice) return false;
+    if (filters.maxPrice > 0 && property.priceMYR > filters.maxPrice) return false;
+
+    if (filters.facilities.length > 0) {
+      const hasAll = filters.facilities.every((facility) => hasFacility(property, facility));
+      if (!hasAll) return false;
     }
 
-    // Affordability filter
+    // Affordability filter applies only when a calculation exists. Selecting it
+    // before calculating yields no results rather than fabricated ones.
     if (filters.affordableOnly) {
-      if (!p.isAffordable) {
-        return false;
-      }
+      if (property.isAffordable !== true) return false;
     }
 
     return true;
@@ -379,11 +516,7 @@ export function filterPropertiesWithMeta(
   return { properties: filtered, hiddenUnknownBedrooms };
 }
 
-/**
- * Filter properties based on user preferences and filters.
- * Convenience wrapper around filterPropertiesWithMeta when the hidden count is
- * not needed.
- */
+/** Convenience wrapper when the hidden count is not needed. */
 export function filterProperties(
   properties: PropertyWithCalculations[],
   filters: PropertyFilters
@@ -392,7 +525,11 @@ export function filterProperties(
 }
 
 /**
- * Sort properties by the selected criteria.
+ * Sort properties.
+ *
+ * Uncalculated records sort after calculated ones for the mortgage sort, so a
+ * missing figure never appears to be the cheapest. Ties fall back to price for
+ * deterministic output.
  */
 export function sortProperties(
   properties: PropertyWithCalculations[],
@@ -402,7 +539,7 @@ export function sortProperties(
 
   switch (sortBy) {
     case 'match':
-      sorted.sort((a, b) => b.matchScore - a.matchScore);
+      sorted.sort((a, b) => b.matchScore - a.matchScore || a.priceMYR - b.priceMYR);
       break;
     case 'price-asc':
       sorted.sort((a, b) => a.priceMYR - b.priceMYR);
@@ -411,10 +548,17 @@ export function sortProperties(
       sorted.sort((a, b) => b.priceMYR - a.priceMYR);
       break;
     case 'mortgage-asc':
-      sorted.sort((a, b) => a.estimatedMonthlyMortgage - b.estimatedMonthlyMortgage);
+      sorted.sort((a, b) => {
+        const left = a.estimatedMonthlyMortgage;
+        const right = b.estimatedMonthlyMortgage;
+        if (left === null && right === null) return a.priceMYR - b.priceMYR;
+        if (left === null) return 1;
+        if (right === null) return -1;
+        return left - right;
+      });
       break;
     default:
-      sorted.sort((a, b) => b.matchScore - a.matchScore);
+      sorted.sort((a, b) => b.matchScore - a.matchScore || a.priceMYR - b.priceMYR);
   }
 
   return sorted;

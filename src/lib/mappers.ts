@@ -13,7 +13,13 @@
 
 import type { Property, PropertyType } from '../types/property';
 import type { AffordabilityInputs } from '../types/affordability';
-import type { PropertyInsert, PropertyRow, PropertyUpdate } from './database.types';
+import { parseAmenities, parseFacilities } from './propertyAdapter';
+import type {
+  PropertyInsert,
+  PropertyMediaRow,
+  PropertyRow,
+  PropertyUpdate,
+} from './database.types';
 
 const KNOWN_TYPES: readonly PropertyType[] = [
   'Condominium',
@@ -45,17 +51,72 @@ export function rowToProperty(row: PropertyRow): Property | null {
     id: row.id,
     propertyName: row.property_name,
     location: row.location,
+    address: row.address,
     priceMYR: Number(row.price_myr),
-    // A missing type is surfaced as a neutral label rather than a guess. The
-    // dataset has no unknown types today; this keeps the type honest if one
-    // appears.
-    propertyType: toPropertyType(row.property_type) ?? 'Flat',
+    priceMinMYR: row.price_min_myr === null ? null : Number(row.price_min_myr),
+    priceMaxMYR: row.price_max_myr === null ? null : Number(row.price_max_myr),
+    priceBasis: row.price_basis,
+    propertyType: toPropertyType(row.property_type),
     bedrooms: row.bedrooms,
     bathrooms: row.bathrooms,
     builtUpSqft: row.built_up_sqft,
+    landArea: row.land_area === null ? null : Number(row.land_area),
+    landAreaUnit: row.land_area_unit,
+    monthlyMaintenanceMYR:
+      row.monthly_maintenance_myr === null ? null : Number(row.monthly_maintenance_myr),
+    sinkingFundMYR: row.sinking_fund_myr === null ? null : Number(row.sinking_fund_myr),
+    tenure: row.tenure,
+    completionDate: row.completion_date,
+    parkingBays: row.parking_bays,
+    furnishingStatus: row.furnishing_status,
+    availabilityStatus: row.availability_status,
+    availabilityCheckedDate: row.availability_checked_date,
+    latitude: row.latitude,
+    longitude: row.longitude,
+    locationPrecision:
+      row.location_precision === 'verified' || row.location_precision === 'approximate'
+        ? row.location_precision
+        : 'unknown',
+    nearestTransit: row.nearest_transit,
+    transitDistanceKm:
+      row.transit_distance_km === null ? null : Number(row.transit_distance_km),
+    transitTravelTimeMin: row.transit_travel_time_min,
+    transitMode: row.transit_mode,
+    nearbyAmenity: row.nearby_amenity,
+    amenityDistanceKm:
+      row.amenity_distance_km === null ? null : Number(row.amenity_distance_km),
+    amenities: parseAmenities(row.nearby_amenity),
+    facilities: Array.isArray(row.facilities) ? row.facilities : parseFacilities(null),
     sourceUrl: row.source_url,
+    sourceType: row.source_type,
+    sourceName: row.source_name,
     verifiedDate: row.verified_date,
+    dateAccessed: row.date_accessed,
+    confirmedByRole: row.confirmed_by_role,
+    confidenceStatus: row.confidence_status,
+    imagePermission: row.image_permission,
+    notes: row.notes,
+    isPublished: row.is_published,
     isExample: row.is_example,
+    media: [],
+  };
+}
+
+/** Convert a database media row without inferring permission or image content. */
+export function rowToPropertyMedia(row: PropertyMediaRow) {
+  return {
+    id: row.id,
+    propertyId: row.property_id,
+    url: row.watermarked_url ?? row.url,
+    kind: row.kind === 'floorplan' ? 'floorplan' as const : 'photo' as const,
+    caption: row.caption,
+    altText: row.alt_text,
+    isCover: row.is_cover,
+    sortOrder: row.sort_order,
+    attribution: row.attribution,
+    permissionStatus: row.permission_status,
+    watermarkedUrl: row.watermarked_url,
+    originalUrl: row.original_url,
   };
 }
 
@@ -82,33 +143,51 @@ export function toCatalog(rows: PropertyRow[]): {
 
 /** Convert the admin form's domain values into an insert payload. */
 export function propertyToInsert(
-  property: {
-    id?: string;
-    propertyName: string;
-    location: string;
-    priceMYR: number | null;
-    propertyType: PropertyType | null;
-    bedrooms: number | null;
-    bathrooms: number | null;
-    builtUpSqft: number | null;
-    sourceUrl: string | null;
-    verifiedDate: string | null;
-    isExample: boolean;
-    isPublished: boolean;
-  },
+  property: AdminPropertyForm,
   createdBy: string | null
 ): PropertyInsert {
   return {
     ...(property.id ? { id: property.id } : {}),
     property_name: property.propertyName.trim(),
     location: property.location.trim(),
+    address: nullableText(property.address),
     price_myr: property.priceMYR,
+    price_min_myr: property.priceMinMYR,
+    price_max_myr: property.priceMaxMYR,
+    price_basis: nullableText(property.priceBasis),
     property_type: property.propertyType,
     bedrooms: property.bedrooms,
     bathrooms: property.bathrooms,
     built_up_sqft: property.builtUpSqft,
+    land_area: property.landArea,
+    land_area_unit: nullableText(property.landAreaUnit),
+    monthly_maintenance_myr: property.monthlyMaintenanceMYR,
+    sinking_fund_myr: property.sinkingFundMYR,
+    tenure: nullableText(property.tenure),
+    completion_date: nullableText(property.completionDate),
+    parking_bays: property.parkingBays,
+    furnishing_status: nullableText(property.furnishingStatus),
+    availability_status: property.availabilityStatus,
+    availability_checked_date: nullableText(property.availabilityCheckedDate),
+    latitude: property.latitude,
+    longitude: property.longitude,
+    location_precision: property.locationPrecision,
+    nearest_transit: nullableText(property.nearestTransit),
+    transit_distance_km: property.transitDistanceKm,
+    transit_travel_time_min: property.transitTravelTimeMin,
+    transit_mode: nullableText(property.transitMode),
+    nearby_amenity: nullableText(property.nearbyAmenity),
+    amenity_distance_km: property.amenityDistanceKm,
+    facilities: property.facilities,
     source_url: property.sourceUrl,
+    source_type: nullableText(property.sourceType),
+    source_name: nullableText(property.sourceName),
     verified_date: property.verifiedDate,
+    date_accessed: nullableText(property.dateAccessed),
+    confirmed_by_role: nullableText(property.confirmedByRole),
+    confidence_status: nullableText(property.confidenceStatus),
+    image_permission: nullableText(property.imagePermission),
+    notes: nullableText(property.notes),
     is_example: property.isExample,
     is_published: property.isPublished,
     created_by: createdBy,
@@ -121,13 +200,50 @@ export function rowToAdminForm(row: PropertyRow) {
     id: row.id,
     propertyName: row.property_name,
     location: row.location,
+    address: row.address,
     priceMYR: row.price_myr === null ? null : Number(row.price_myr),
+    priceMinMYR: row.price_min_myr === null ? null : Number(row.price_min_myr),
+    priceMaxMYR: row.price_max_myr === null ? null : Number(row.price_max_myr),
+    priceBasis: row.price_basis,
     propertyType: toPropertyType(row.property_type),
     bedrooms: row.bedrooms,
     bathrooms: row.bathrooms,
     builtUpSqft: row.built_up_sqft,
+    landArea: row.land_area === null ? null : Number(row.land_area),
+    landAreaUnit: row.land_area_unit,
+    monthlyMaintenanceMYR:
+      row.monthly_maintenance_myr === null ? null : Number(row.monthly_maintenance_myr),
+    sinkingFundMYR: row.sinking_fund_myr === null ? null : Number(row.sinking_fund_myr),
+    tenure: row.tenure,
+    completionDate: row.completion_date,
+    parkingBays: row.parking_bays,
+    furnishingStatus: row.furnishing_status,
+    availabilityStatus: row.availability_status,
+    availabilityCheckedDate: row.availability_checked_date,
+    latitude: row.latitude,
+    longitude: row.longitude,
+    locationPrecision:
+      row.location_precision === 'verified' || row.location_precision === 'approximate'
+        ? row.location_precision
+        : 'unknown',
+    nearestTransit: row.nearest_transit,
+    transitDistanceKm:
+      row.transit_distance_km === null ? null : Number(row.transit_distance_km),
+    transitTravelTimeMin: row.transit_travel_time_min,
+    transitMode: row.transit_mode,
+    nearbyAmenity: row.nearby_amenity,
+    amenityDistanceKm:
+      row.amenity_distance_km === null ? null : Number(row.amenity_distance_km),
+    facilities: Array.isArray(row.facilities) ? row.facilities : [],
     sourceUrl: row.source_url,
+    sourceType: row.source_type,
+    sourceName: row.source_name,
     verifiedDate: row.verified_date,
+    dateAccessed: row.date_accessed,
+    confirmedByRole: row.confirmed_by_role,
+    confidenceStatus: row.confidence_status,
+    imagePermission: row.image_permission,
+    notes: row.notes,
     isExample: row.is_example,
     isPublished: row.is_published,
   };
@@ -135,18 +251,53 @@ export function rowToAdminForm(row: PropertyRow) {
 
 export type AdminPropertyForm = ReturnType<typeof rowToAdminForm>;
 
+function nullableText(value: string | null): string | null {
+  return value?.trim() || null;
+}
+
 /** Build the update payload from an edited form, normalising blanks to null. */
 export function formToUpdate(form: AdminPropertyForm): PropertyUpdate {
   return {
     property_name: form.propertyName.trim(),
     location: form.location.trim(),
+    address: nullableText(form.address),
     price_myr: form.priceMYR,
+    price_min_myr: form.priceMinMYR,
+    price_max_myr: form.priceMaxMYR,
+    price_basis: nullableText(form.priceBasis),
     property_type: form.propertyType,
     bedrooms: form.bedrooms,
     bathrooms: form.bathrooms,
     built_up_sqft: form.builtUpSqft,
+    land_area: form.landArea,
+    land_area_unit: nullableText(form.landAreaUnit),
+    monthly_maintenance_myr: form.monthlyMaintenanceMYR,
+    sinking_fund_myr: form.sinkingFundMYR,
+    tenure: nullableText(form.tenure),
+    completion_date: nullableText(form.completionDate),
+    parking_bays: form.parkingBays,
+    furnishing_status: nullableText(form.furnishingStatus),
+    availability_status: form.availabilityStatus,
+    availability_checked_date: nullableText(form.availabilityCheckedDate),
+    latitude: form.latitude,
+    longitude: form.longitude,
+    location_precision: form.locationPrecision,
+    nearest_transit: nullableText(form.nearestTransit),
+    transit_distance_km: form.transitDistanceKm,
+    transit_travel_time_min: form.transitTravelTimeMin,
+    transit_mode: nullableText(form.transitMode),
+    nearby_amenity: nullableText(form.nearbyAmenity),
+    amenity_distance_km: form.amenityDistanceKm,
+    facilities: form.facilities,
     source_url: form.sourceUrl?.trim() ? form.sourceUrl.trim() : null,
+    source_type: nullableText(form.sourceType),
+    source_name: nullableText(form.sourceName),
     verified_date: form.verifiedDate?.trim() ? form.verifiedDate.trim() : null,
+    date_accessed: nullableText(form.dateAccessed),
+    confirmed_by_role: nullableText(form.confirmedByRole),
+    confidence_status: nullableText(form.confidenceStatus),
+    image_permission: nullableText(form.imagePermission),
+    notes: nullableText(form.notes),
     is_example: form.isExample,
     is_published: form.isPublished,
   };

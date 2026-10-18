@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PropertyWithCalculations } from '../types/property';
 import { AffordabilityInputs } from '../types/affordability';
@@ -9,9 +9,12 @@ import {
   filtersFromPreferences,
   filterPropertiesWithMeta,
   sortProperties,
+  availableFacilities,
 } from '../utils/propertyFilter';
 import PropertyCard from './PropertyCard';
 import './PropertyExplorer.css';
+
+const PropertyMap = lazy(() => import('./PropertyMap'));
 
 interface PropertyExplorerProps {
   /** Enriched records. Empty before a personalized calculation exists. */
@@ -50,6 +53,17 @@ export default function PropertyExplorer({
     filtersFromPreferences(preferences)
   );
   const [sortBy, setSortBy] = useState<SortOption>('match');
+  const [view, setView] = useState<'list' | 'map'>('list');
+
+  useEffect(() => {
+    setFilters((current) => ({
+      ...current,
+      location: preferences
+        ? preferences.preferredLocation?.trim() || ''
+        : current.location,
+      minBedrooms: preferences?.minBedrooms ? Math.floor(preferences.minBedrooms) : 0,
+    }));
+  }, [preferences?.preferredLocation, preferences?.minBedrooms]);
 
   // Dropdown options come from the full catalogue, not the filtered subset, so a
   // filter can never remove its own options.
@@ -58,9 +72,22 @@ export default function PropertyExplorer({
     [properties]
   );
   const propertyTypes = useMemo(
-    () => ['All', ...Array.from(new Set(properties.map((p) => p.propertyType))).sort()],
+    () => [
+      'All',
+      ...Array.from(
+        new Set(
+          properties
+            .map((property) => property.propertyType)
+            .filter(
+              (type): type is NonNullable<PropertyWithCalculations['propertyType']> =>
+                typeof type === 'string'
+            )
+        )
+      ).sort(),
+    ],
     [properties]
   );
+  const facilities = useMemo(() => availableFacilities(properties), [properties]);
 
   const { properties: matching, hiddenUnknownBedrooms } = filterPropertiesWithMeta(
     properties,
@@ -73,6 +100,10 @@ export default function PropertyExplorer({
     filters.location !== DEFAULT_FILTERS.location ||
     filters.propertyType !== DEFAULT_FILTERS.propertyType ||
     filters.minBedrooms !== DEFAULT_FILTERS.minBedrooms ||
+    filters.minBathrooms !== DEFAULT_FILTERS.minBathrooms ||
+    filters.minBuiltUpSqft !== DEFAULT_FILTERS.minBuiltUpSqft ||
+    filters.facilities.length > 0 ||
+    filters.minPrice !== DEFAULT_FILTERS.minPrice ||
     filters.maxPrice !== DEFAULT_FILTERS.maxPrice ||
     filters.affordableOnly !== DEFAULT_FILTERS.affordableOnly;
 
@@ -120,18 +151,19 @@ export default function PropertyExplorer({
             <label className="form-label" htmlFor="filter-location">
               {t('explorer.location')}
             </label>
-            <select
+            <input
               id="filter-location"
-              className="form-select"
+              className="form-input"
+              list="filter-locations"
+              placeholder={t('explorer.anyLocation')}
               value={filters.location}
               onChange={(event) => change('location', event.target.value)}
-            >
+            />
+            <datalist id="filter-locations">
               {locations.map((location) => (
-                <option key={location} value={location}>
-                  {location === 'All' ? t('common.all') : location}
-                </option>
+                <option key={location} value={location === 'All' ? '' : location} />
               ))}
-            </select>
+            </datalist>
           </div>
 
           <div className="explorer__filter">
@@ -172,6 +204,57 @@ export default function PropertyExplorer({
           </div>
 
           <div className="explorer__filter">
+            <label className="form-label" htmlFor="filter-bathrooms">
+              {t('explorer.minBathrooms')}
+            </label>
+            <select
+              id="filter-bathrooms"
+              className="form-select"
+              value={filters.minBathrooms}
+              onChange={(event) => change('minBathrooms', parseInt(event.target.value, 10) || 0)}
+            >
+              <option value="0">{t('affordability.anyBedrooms')}</option>
+              {[1, 2, 3, 4, 5].map((count) => (
+                <option key={count} value={count}>
+                  {t('explorer.bathroomsPlus', { count })}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="explorer__filter">
+            <label className="form-label" htmlFor="filter-builtup">
+              {t('explorer.minBuiltUp')}
+            </label>
+            <input
+              id="filter-builtup"
+              type="number"
+              className="form-input"
+              placeholder={t('explorer.noLimit')}
+              value={filters.minBuiltUpSqft || ''}
+              onChange={(event) => change('minBuiltUpSqft', parseInt(event.target.value, 10) || 0)}
+              min="0"
+              step="100"
+            />
+          </div>
+
+          <div className="explorer__filter">
+            <label className="form-label" htmlFor="filter-minprice">
+              {t('explorer.minPrice')}
+            </label>
+            <input
+              id="filter-minprice"
+              type="number"
+              className="form-input"
+              placeholder={t('explorer.noLimit')}
+              value={filters.minPrice || ''}
+              onChange={(event) => change('minPrice', parseInt(event.target.value, 10) || 0)}
+              min="0"
+              step="50000"
+            />
+          </div>
+
+          <div className="explorer__filter">
             <label className="form-label" htmlFor="filter-maxprice">
               {t('explorer.maxPrice')}
             </label>
@@ -186,6 +269,31 @@ export default function PropertyExplorer({
               step="50000"
             />
           </div>
+
+          {facilities.length > 0 && (
+            <fieldset className="explorer__facility-filter">
+              <legend className="form-label">{t('explorer.facilities')}</legend>
+              <div className="explorer__facility-list">
+                {facilities.map((facility) => (
+                  <label className="explorer__checkbox-label" key={facility}>
+                    <input
+                      type="checkbox"
+                      checked={filters.facilities.includes(facility)}
+                      onChange={(event) =>
+                        setFilters((current) => ({
+                          ...current,
+                          facilities: event.target.checked
+                            ? [...current.facilities, facility]
+                            : current.facilities.filter((item) => item !== facility),
+                        }))
+                      }
+                    />
+                    <span>{facility}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
 
           <div className="explorer__filter explorer__filter--checkbox">
             <label className="explorer__checkbox-label">
@@ -202,6 +310,25 @@ export default function PropertyExplorer({
         <p className="explorer__count">
           {t('explorer.showing', { shown: filtered.length, total: totalCount })}
         </p>
+
+        <div className="explorer__view-toggle" role="group" aria-label={t('explorer.view')}>
+          <button
+            type="button"
+            className={`btn btn--sm ${view === 'list' ? 'btn--primary' : 'btn--secondary'}`}
+            aria-pressed={view === 'list'}
+            onClick={() => setView('list')}
+          >
+            {t('explorer.list')}
+          </button>
+          <button
+            type="button"
+            className={`btn btn--sm ${view === 'map' ? 'btn--primary' : 'btn--secondary'}`}
+            aria-pressed={view === 'map'}
+            onClick={() => setView('map')}
+          >
+            {t('explorer.map')}
+          </button>
+        </div>
 
         {hasActiveFilters && (
           <div className="explorer__active-filters">
@@ -222,7 +349,13 @@ export default function PropertyExplorer({
           </p>
         )}
 
-        {filtered.length > 0 ? (
+        {view === 'map' ? (
+          <div className="explorer__map surface" role="region" aria-label={t('explorer.map')}>
+            <Suspense fallback={<p role="status">{t('common.loading')}</p>}>
+              <PropertyMap properties={filtered} onViewDetails={onViewDetails} />
+            </Suspense>
+          </div>
+        ) : filtered.length > 0 ? (
           <div className="explorer__grid">
             {filtered.map((property, index) => (
               <div
@@ -246,7 +379,11 @@ export default function PropertyExplorer({
             <div className="empty-state__icon" aria-hidden="true">
               🏘️
             </div>
-            <h3 className="empty-state__title">{t('explorer.emptyTitle')}</h3>
+            <h3 className="empty-state__title">
+              {filters.location !== DEFAULT_FILTERS.location
+                ? t('explorer.emptyLocation', { location: filters.location })
+                : t('explorer.emptyTitle')}
+            </h3>
             <p className="empty-state__text">{t('explorer.emptyText')}</p>
             <button
               className="btn btn--secondary mt-lg"

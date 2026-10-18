@@ -5,7 +5,7 @@
   isolation: isolate;
   overflow: hidden;
   background-color: var(--color-bg-hero);
-  color: var(--color-text-inverse);
+  color: var(--color-text-on-hero);
 }
 
 /* Layered brand gradient. Very wide so the slow drift reads as ambient depth. */
@@ -144,6 +144,14 @@
   left: 0;
   right: 0;
   bottom: 0;
+}
+
+.hero .btn--hero-secondary {
+  border-color: rgba(255, 247, 243, 0.75);
+}
+
+.hero .btn--hero-secondary:hover {
+  border-color: var(--brand-gold-light);
 }
 
 @media (max-width: 640px) {

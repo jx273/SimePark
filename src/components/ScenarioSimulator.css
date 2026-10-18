@@ -154,6 +154,37 @@
   color: var(--color-text-muted);
 }
 
+.simulator__bank-rates {
+  margin-top: var(--space-xl);
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--color-border-light);
+}
+
+.simulator__bank-fields,
+.simulator__rate-results {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: var(--space-md);
+  margin-top: var(--space-md);
+}
+
+.simulator__rate-results > div {
+  padding: var(--space-md);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--border-radius);
+  background: var(--color-bg-section);
+}
+
+.simulator__rate-results h4 {
+  margin-bottom: var(--space-xs);
+}
+
+.simulator__rate-results p {
+  margin-top: var(--space-xs);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
 @media (max-width: 900px) {
   .simulator__grid {
     grid-template-columns: 1fr;

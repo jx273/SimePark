@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { AffordabilityInputs, AffordabilityResult } from '../types/affordability';
 import {
@@ -7,7 +7,7 @@ import {
   runScenario,
   type ScenarioAdjustments,
 } from '../utils/simulator';
-import { formatMYR, formatPercentage } from '../utils/mortgage';
+import { calculateMonthlyMortgage, formatMYR, formatPercentage } from '../utils/mortgage';
 import { useAnimatedNumber, useScrollReveal } from '../hooks/interactions';
 import './ScenarioSimulator.css';
 
@@ -18,6 +18,8 @@ interface ScenarioSimulatorProps {
   baseResult: AffordabilityResult | null;
   onSaveScenario?: (name: string, inputs: AffordabilityInputs) => void;
   canSave?: boolean;
+  importedRate?: number | null;
+  onClearImportedRate?: () => void;
 }
 
 /** Read a numeric field, treating an empty box as "no override". */
@@ -32,17 +34,39 @@ export default function ScenarioSimulator({
   baseResult,
   onSaveScenario,
   canSave = false,
+  importedRate = null,
+  onClearImportedRate,
 }: ScenarioSimulatorProps) {
   const { t } = useTranslation();
   const reveal = useScrollReveal<HTMLElement>();
 
   const base = baseInputs ?? NEUTRAL_BASE;
+  const scenarioBase =
+    importedRate === null ? base : { ...base, annualInterestRate: importedRate };
   const usingSubmittedFigures = Boolean(baseInputs && baseResult);
 
   const [adjustments, setAdjustments] = useState<ScenarioAdjustments>(EMPTY_ADJUSTMENTS);
   const [scenarioName, setScenarioName] = useState('');
+  const [comparisonRate, setComparisonRate] = useState<number | null>(null);
+  const [comparisonName, setComparisonName] = useState('');
+  const [comparisonSource, setComparisonSource] = useState('');
+  const [comparisonRateType, setComparisonRateType] = useState('');
+  const [comparisonVerifiedDate, setComparisonVerifiedDate] = useState('');
 
-  const outcome = useMemo(() => runScenario(base, adjustments), [base, adjustments]);
+  useEffect(() => {
+    if (importedRate !== null) {
+      setAdjustments((current) =>
+        current.annualInterestRate === null
+          ? current
+          : { ...current, annualInterestRate: null }
+      );
+    }
+  }, [importedRate]);
+
+  const outcome = useMemo(
+    () => runScenario(scenarioBase, adjustments),
+    [scenarioBase, adjustments]
+  );
 
   const animatedMaxPrice = useAnimatedNumber(outcome.result.estimatedMaxPropertyPrice);
   const animatedBudget = useAnimatedNumber(outcome.result.estimatedMortgageBudget);
@@ -54,9 +78,53 @@ export default function ScenarioSimulator({
   const reset = () => {
     setAdjustments(EMPTY_ADJUSTMENTS);
     setScenarioName('');
+    onClearImportedRate?.();
   };
 
   const { result, priceFit } = outcome;
+  const comparisonPrincipal =
+    adjustments.targetPrice !== null && adjustments.targetPrice > 0
+      ? Math.max(0, adjustments.targetPrice - Math.min(outcome.inputs.downPayment, adjustments.targetPrice))
+      : baseResult?.estimatedMaxLoanPrincipal ?? 0;
+  const baseComparisonPayment = calculateMonthlyMortgage(
+    comparisonPrincipal,
+    outcome.inputs.annualInterestRate,
+    outcome.inputs.loanTenureYears
+  );
+  const manualComparisonPayment =
+    comparisonRate === null
+      ? null
+      : calculateMonthlyMortgage(
+          comparisonPrincipal,
+          comparisonRate,
+          outcome.inputs.loanTenureYears
+        );
+  const comparisonMonths = outcome.inputs.loanTenureYears * 12;
+  const baseTotalInterest = Math.max(
+    0,
+    baseComparisonPayment * comparisonMonths - comparisonPrincipal
+  );
+  const manualTotalInterest =
+    manualComparisonPayment === null
+      ? null
+      : Math.max(0, manualComparisonPayment * comparisonMonths - comparisonPrincipal);
+
+  if (!usingSubmittedFigures) {
+    return (
+      <section className={`simulator section${reveal.isVisible ? ' is-visible' : ''}`} id="simulator" ref={reveal.ref}>
+        <div className={`container ${reveal.className}`}>
+          <h2 className="section__title text-center">{t('simulator.title')}</h2>
+          <p className="section__subtitle section__subtitle--center">{t('simulator.subtitle')}</p>
+          <div className="simulator__panel surface" role="status">
+            <p>{t('simulator.noCalculation')}</p>
+            <a className="btn btn--primary" href="#affordability">
+              {t('affordability.sectionTitle')}
+            </a>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className={`simulator section${reveal.isVisible ? ' is-visible' : ''}`} id="simulator" ref={reveal.ref}>
@@ -73,6 +141,11 @@ export default function ScenarioSimulator({
               <strong>{t('simulator.base')}:</strong>{' '}
               {usingSubmittedFigures ? t('simulator.baseFromForm') : t('simulator.baseDefault')}
             </p>
+            {importedRate !== null && (
+              <p className="simulator__base-note" role="status">
+              {t('simulator.importedRateNote')}
+              </p>
+            )}
 
             <div className="simulator__fields">
               <label className="form-group">
@@ -148,7 +221,7 @@ export default function ScenarioSimulator({
                   step="0.1"
                   min="0"
                   max="20"
-                  value={adjustments.annualInterestRate ?? ''}
+                  value={adjustments.annualInterestRate ?? (importedRate ?? '')}
                   placeholder={String(base.annualInterestRate)}
                   onChange={(event) => update('annualInterestRate', readOverride(event.target.value))}
                 />
@@ -268,6 +341,101 @@ export default function ScenarioSimulator({
               {t('simulator.estimateNote')} {t('results.currentDsr')}:{' '}
               {formatPercentage(result.currentDSR)}.
             </p>
+
+            <section className="simulator__bank-rates" aria-labelledby="bank-rate-title">
+              <h3 id="bank-rate-title">{t('simulator.bankComparison')}</h3>
+              <p>{t('simulator.noSuppliedRates')}</p>
+              <div className="simulator__bank-fields">
+                <label className="form-group">
+                  <span className="form-label">{t('simulator.bankName')}</span>
+                  <input
+                    className="form-input"
+                    value={comparisonName}
+                    maxLength={100}
+                    onChange={(event) => setComparisonName(event.target.value)}
+                  />
+                </label>
+                <label className="form-group">
+                  <span className="form-label">{t('simulator.manualRate')}</span>
+                  <input
+                    className="form-input"
+                    type="number"
+                    min="0"
+                    max="20"
+                    step="0.01"
+                    value={comparisonRate ?? ''}
+                    onChange={(event) => setComparisonRate(readOverride(event.target.value))}
+                  />
+                </label>
+                <label className="form-group">
+                  <span className="form-label">{t('simulator.rateType')}</span>
+                  <input
+                    className="form-input"
+                    value={comparisonRateType}
+                    maxLength={80}
+                    onChange={(event) => setComparisonRateType(event.target.value)}
+                  />
+                </label>
+                <label className="form-group">
+                  <span className="form-label">{t('simulator.rateSource')}</span>
+                  <input
+                    className="form-input"
+                    type="url"
+                    value={comparisonSource}
+                    onChange={(event) => setComparisonSource(event.target.value)}
+                  />
+                </label>
+                <label className="form-group">
+                  <span className="form-label">{t('simulator.rateVerifiedDate')}</span>
+                  <input
+                    className="form-input"
+                    type="date"
+                    value={comparisonVerifiedDate}
+                    onChange={(event) => setComparisonVerifiedDate(event.target.value)}
+                  />
+                </label>
+              </div>
+              <p className="simulator__note">{t('simulator.manualRateWarning')}</p>
+              {comparisonRate !== null && comparisonPrincipal > 0 && (
+                <>
+                  <p className="simulator__note">
+                    {t('simulator.sameLoanAssumptions', {
+                      principal: formatMYR(comparisonPrincipal),
+                      years: outcome.inputs.loanTenureYears,
+                    })}
+                  </p>
+                  <div className="simulator__rate-results">
+                    <div>
+                      <h4>{t('simulator.currentScenario')}</h4>
+                      <p>{formatPercentage(outcome.inputs.annualInterestRate)} — {formatMYR(baseComparisonPayment)} / {t('simulator.month')}</p>
+                      <p>{t('simulator.totalInterest')}: {formatMYR(baseTotalInterest)}</p>
+                    </div>
+                    <div>
+                      <h4>{comparisonName.trim() || t('simulator.manualScenario')}</h4>
+                      <p>{formatPercentage(comparisonRate)} — {formatMYR(manualComparisonPayment)} / {t('simulator.month')}</p>
+                      <p>{t('simulator.totalInterest')}: {formatMYR(manualTotalInterest)}</p>
+                      {comparisonRateType.trim() && <p>{t('simulator.rateType')}: {comparisonRateType}</p>}
+                      {comparisonSource.trim() && /^https:\/\//i.test(comparisonSource) && (
+                        <a href={comparisonSource} target="_blank" rel="noopener noreferrer">
+                          {t('simulator.rateSource')}
+                        </a>
+                      )}
+                      {comparisonVerifiedDate && <p>{t('simulator.rateVerifiedDate')}: {comparisonVerifiedDate}</p>}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn--secondary btn--sm"
+                    onClick={() => update('annualInterestRate', comparisonRate)}
+                  >
+                    {t('simulator.applyManualRate')}
+                  </button>
+                </>
+              )}
+              {comparisonRate !== null && comparisonPrincipal <= 0 && (
+                <p role="status">{t('simulator.noLoanAmount')}</p>
+              )}
+            </section>
           </div>
         </div>
       </div>
