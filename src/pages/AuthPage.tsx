@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthProvider';
-import { validateEmail, validatePassword, type AuthErrorKey } from '../lib/authErrors';
+import {
+  classifyAuthError,
+  validateEmail,
+  validatePassword,
+  type AuthErrorKey,
+} from '../lib/authErrors';
 import { navigate, type AuthMode } from '../router/router';
 import './AuthPage.css';
 
@@ -93,8 +98,7 @@ export default function AuthPage({ mode }: AuthPageProps) {
           return;
         }
         if (outcome?.needsEmailConfirmation) {
-          // State plainly that a confirmation step is pending, rather than
-          // pretending the account is ready to use.
+          // Supabase project settings are managed in its dashboard, not here.
           setNotice(t('auth.confirmEmailText', { email: email.trim() }));
           return;
         }
@@ -133,6 +137,12 @@ export default function AuthPage({ mode }: AuthPageProps) {
           window.setTimeout(() => navigate({ name: 'dashboard' }), 1200);
         }
       }
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? classifyAuthError({ message: cause.message })
+          : 'generic'
+      );
     } finally {
       setPending(false);
     }

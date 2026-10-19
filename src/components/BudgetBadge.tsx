@@ -23,6 +23,12 @@ export default function BudgetBadge({
   const { t } = useTranslation();
 
   switch (property.budgetStatus) {
+    case 'uncalculated':
+      return (
+        <span className="badge badge--unknown">
+          {t('status.notCalculated')}
+        </span>
+      );
     case 'affordable':
       return (
         <span className="badge badge--affordable">
@@ -38,7 +44,6 @@ export default function BudgetBadge({
         </span>
       );
     case 'overMonthlyBudget':
-    default:
       return (
         <span className="badge badge--over-budget">
           <span aria-hidden="true">!</span> {t('status.overBudget')}

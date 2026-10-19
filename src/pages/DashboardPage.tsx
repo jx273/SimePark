@@ -21,7 +21,7 @@ import type { SavedScenarioRow } from '../lib/database.types';
 import type { AffordabilityInputs } from '../types/affordability';
 import type { Property, PropertyWithCalculations } from '../types/property';
 import { calculateAffordability } from '../utils/affordability';
-import { enrichPropertiesWithCalculations } from '../utils/propertyFilter';
+import { enrichPropertiesWithCalculations, toUncalculatedProperties } from '../utils/propertyFilter';
 import { NEUTRAL_BASE } from '../utils/simulator';
 import './DashboardPage.css';
 
@@ -31,6 +31,7 @@ interface DashboardPageProps {
   /** Full catalogue, so saved items can be resolved to real records. */
   properties: Property[];
   onOpenProperty: (property: PropertyWithCalculations) => void;
+  affordabilityInputs: AffordabilityInputs | null;
   /** Load a saved scenario back into the home-page calculator. */
   onLoadScenario: (inputs: AffordabilityInputs) => void;
 }
@@ -38,6 +39,7 @@ interface DashboardPageProps {
 export default function DashboardPage({
   properties,
   onOpenProperty,
+  affordabilityInputs,
   onLoadScenario,
 }: DashboardPageProps) {
   const { t, i18n } = useTranslation();
@@ -53,17 +55,16 @@ export default function DashboardPage({
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // The enrichment baseline: saved items are re-priced with a neutral assumption
-  // so the dashboard never shows figures that depend on a form the user has not
-  // filled in on this device.
   const enriched = useMemo(
     () =>
-      enrichPropertiesWithCalculations(
-        properties,
-        scenarioInputs,
-        calculateAffordability(scenarioInputs)
-      ),
-    [properties, scenarioInputs]
+      affordabilityInputs
+        ? enrichPropertiesWithCalculations(
+            properties,
+            affordabilityInputs,
+            calculateAffordability(affordabilityInputs)
+          )
+        : toUncalculatedProperties(properties),
+    [properties, affordabilityInputs]
   );
 
   const savedProperties = useMemo(

@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AuthProvider } from './auth/AuthProvider';
 import { ThemeProvider } from './theme/ThemeProvider';
-import { SelectionProvider } from './state/SelectionProvider';
+import { SelectionProvider, useSelection } from './state/SelectionProvider';
 import { useRoute, useScrollToTopOnRouteChange, navigate } from './router/router';
 import Header from './components/Header';
+import Sidebar from './components/Sidebar';
 import Footer from './components/Footer';
 import HomePage from './pages/HomePage';
 import PropertyDetailPage from './pages/PropertyDetailPage';
@@ -13,12 +14,35 @@ import AdminPage from './pages/AdminPage';
 import AuthPage from './pages/AuthPage';
 import PrivacyPage from './pages/PrivacyPage';
 import NotFoundPage from './pages/NotFoundPage';
-import { fetchCatalog, bundledCatalog } from './lib/propertyRepository';
+import { fetchCatalog } from './lib/propertyRepository';
 import { enrichPropertiesWithCalculations } from './utils/propertyFilter';
+import { toUncalculatedProperties } from './utils/propertyFilter';
 import { calculateAffordability } from './utils/affordability';
-import { NEUTRAL_BASE } from './utils/simulator';
 import type { Property, PropertyWithCalculations } from './types/property';
 import type { AffordabilityInputs } from './types/affordability';
+
+const FINANCIAL_INPUTS_KEY = 'simepark.affordabilityInputs';
+
+function readFinancialInputs(): AffordabilityInputs | null {
+  try {
+    const raw = localStorage.getItem(FINANCIAL_INPUTS_KEY);
+    if (!raw) return null;
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== 'object' || value === null) return null;
+    const inputs = value as Partial<AffordabilityInputs>;
+    const numeric = [
+      inputs.monthlyIncome,
+      inputs.monthlyDebts,
+      inputs.downPayment,
+      inputs.annualInterestRate,
+      inputs.loanTenureYears,
+    ];
+    if (!numeric.every((item) => typeof item === 'number' && Number.isFinite(item))) return null;
+    return inputs as AffordabilityInputs;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Application shell.
@@ -38,18 +62,36 @@ import type { AffordabilityInputs } from './types/affordability';
 function AppShell() {
   const { t } = useTranslation();
   const route = useRoute();
+  const { comparisonIds } = useSelection();
   useScrollToTopOnRouteChange(route);
 
-  const [catalog, setCatalog] = useState<Property[]>(() => bundledCatalog().properties);
-  const [catalogSource, setCatalogSource] = useState<'supabase' | 'bundled-demo'>('bundled-demo');
+  const [catalog, setCatalog] = useState<Property[]>([]);
+  const [catalogSource, setCatalogSource] = useState<'supabase' | 'bundled-source'>('supabase');
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [unpricedCount, setUnpricedCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
 
-  const [userInputs, setUserInputs] = useState<AffordabilityInputs | null>(null);
+  const [userInputs, setUserInputs] = useState<AffordabilityInputs | null>(readFinancialInputs);
+  const [navOpen, setNavOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState('home');
+  const [importedRate, setImportedRate] = useState<number | null>(null);
 
-  // Load the catalogue once. A failure falls back to the bundled records rather
-  // than leaving the page empty.
+  useEffect(() => {
+    try {
+      if (userInputs) localStorage.setItem(FINANCIAL_INPUTS_KEY, JSON.stringify(userInputs));
+      else localStorage.removeItem(FINANCIAL_INPUTS_KEY);
+    } catch {
+      // The live in-memory values still work when browser storage is unavailable.
+    }
+  }, [userInputs]);
+
+  const affordabilityResult = useMemo(
+    () => (userInputs ? calculateAffordability(userInputs) : null),
+    [userInputs]
+  );
+
+  // Load the catalogue once. The repository uses the bundled source fixture only
+  // when Supabase is unconfigured; a live database error stays visible.
   useEffect(() => {
     let active = true;
 
@@ -68,20 +110,29 @@ function AppShell() {
   }, []);
 
   const scrollToSection = useCallback((section: string) => {
+    setActiveSection(section === 'hero' ? 'home' : section);
     const element = document.getElementById(section);
-    if (!element) return;
+    if (!element) {
+      if (section === 'hero') {
+        const prefersReduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        window.scrollTo({ top: 0, behavior: prefersReduced ? 'auto' : 'smooth' });
+      }
+      return;
+    }
 
     const headerHeight = 72;
     const top = element.getBoundingClientRect().top + window.scrollY - headerHeight;
-    window.scrollTo({ top, behavior: 'smooth' });
+    const prefersReduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    window.scrollTo({ top, behavior: prefersReduced ? 'auto' : 'smooth' });
   }, []);
 
-  // The explorer's baseline enrichment. Uses the submitted inputs when they
-  // exist, and a neutral assumption otherwise.
-  const catalogWithCalculations: PropertyWithCalculations[] = useMemo(() => {
-    const baseline = userInputs ?? NEUTRAL_BASE;
-    return enrichPropertiesWithCalculations(catalog, baseline, calculateAffordability(baseline));
-  }, [catalog, userInputs]);
+  const catalogWithCalculations: PropertyWithCalculations[] = useMemo(
+    () =>
+      userInputs && affordabilityResult
+        ? enrichPropertiesWithCalculations(catalog, userInputs, affordabilityResult)
+        : toUncalculatedProperties(catalog),
+    [catalog, userInputs, affordabilityResult]
+  );
 
   /** Find an enriched record by id, or null when it is not in the catalogue. */
   const findEnriched = useCallback(
@@ -93,6 +144,11 @@ function AppShell() {
   const findRaw = useCallback(
     (id: string): Property | null => catalog.find((property) => property.id === id) ?? null,
     [catalog]
+  );
+
+  const comparisonWithCalculations = useMemo(
+    () => catalogWithCalculations.filter((property) => comparisonIds.includes(property.id)),
+    [catalogWithCalculations, comparisonIds]
   );
 
   const openProperty = useCallback((property: PropertyWithCalculations) => {
@@ -112,8 +168,13 @@ function AppShell() {
             isLoading={isLoading}
             catalogError={catalogError}
             unpricedCount={unpricedCount}
+            affordabilityInputs={userInputs}
+            affordabilityResult={affordabilityResult}
+            onSubmitAffordability={setUserInputs}
             onNavigateSection={scrollToSection}
             onOpenProperty={openProperty}
+            importedRate={importedRate}
+            onImportRate={setImportedRate}
           />
         );
 
@@ -124,6 +185,10 @@ function AppShell() {
             property={findEnriched(route.id)}
             rawProperty={findRaw(route.id)}
             isLoading={isLoading}
+            affordabilityInputs={userInputs}
+            affordabilityResult={affordabilityResult}
+            properties={catalogWithCalculations}
+            comparisonProperties={comparisonWithCalculations}
           />
         );
 
@@ -133,6 +198,7 @@ function AppShell() {
             properties={catalog}
             onOpenProperty={openProperty}
             onLoadScenario={handleLoadScenario}
+            affordabilityInputs={userInputs}
           />
         );
 
@@ -153,22 +219,31 @@ function AppShell() {
 
   return (
     <div className="app">
-      {/* Announce route changes to assistive technology. */}
       <p className="sr-only" role="status" aria-live="polite">
         {isLoading ? t('common.loading') : ''}
       </p>
 
-      <Header route={route} onNavigateSection={scrollToSection} />
+      <Header
+        route={route}
+        menuOpen={navOpen}
+        onToggleMenu={() => setNavOpen((open) => !open)}
+      />
 
-      <main id="main">{renderRoute()}</main>
+      <div className="app__body">
+        <Sidebar
+          route={route}
+          open={navOpen}
+          activeSection={activeSection}
+          onClose={() => setNavOpen(false)}
+          onNavigateSection={scrollToSection}
+        />
+        <div className="app__content">
+          <main id="main">{renderRoute()}</main>
+          <Footer onNavigateSection={scrollToSection} />
+        </div>
+      </div>
 
-      <Footer onNavigateSection={scrollToSection} />
-
-      {/* Guests are told which catalogue they are seeing. This is the honest way
-          to present bundled demonstration data. */}
-      {catalogSource === 'bundled-demo' && !isLoading && (
-        <p className="sr-only">{t('card.demoBanner')}</p>
-      )}
+      {catalogSource === 'bundled-source' && !isLoading && <p className="sr-only">{t('common.localOnly')}</p>}
     </div>
   );
 }

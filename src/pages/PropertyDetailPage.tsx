@@ -8,6 +8,8 @@ import { ILLUSTRATIVE_DSR_CAP } from '../types/affordability';
 import { navigate } from '../router/router';
 import BudgetBadge, { ProvenanceBadge } from '../components/BudgetBadge';
 import type { Property, PropertyWithCalculations } from '../types/property';
+import type { AffordabilityInputs, AffordabilityResult } from '../types/affordability';
+import AssistantChat from '../components/AssistantChat';
 import './PropertyDetailPage.css';
 
 interface PropertyDetailPageProps {
@@ -17,6 +19,10 @@ interface PropertyDetailPageProps {
   /** The raw record, so facts can be shown without an affordability estimate. */
   rawProperty: Property | null;
   isLoading: boolean;
+  affordabilityInputs: AffordabilityInputs | null;
+  affordabilityResult: AffordabilityResult | null;
+  properties: PropertyWithCalculations[];
+  comparisonProperties: PropertyWithCalculations[];
 }
 
 export default function PropertyDetailPage({
@@ -24,11 +30,16 @@ export default function PropertyDetailPage({
   property,
   rawProperty,
   isLoading,
+  affordabilityInputs,
+  affordabilityResult,
+  properties,
+  comparisonProperties,
 }: PropertyDetailPageProps) {
   const { t } = useTranslation();
   const { user, isConfigured } = useAuth();
   const { isSaved, isCompared, toggleSaved, toggleCompared, comparisonFull } = useSelection();
   const [activityLogged, setActivityLogged] = useState(false);
+  const [expandedImage, setExpandedImage] = useState<string | null>(null);
 
   // Record a genuine view once, and only for a signed-in user, so the dashboard
   // activity list reflects real usage rather than page loads by guests.
@@ -120,7 +131,58 @@ export default function PropertyDetailPage({
           </p>
         )}
 
-        <p className="detail__price">{formatMYR(rawProperty.priceMYR)}</p>
+        <p className="detail__price">
+          {rawProperty.priceBasis ? `${rawProperty.priceBasis}: ` : ''}
+          {formatMYR(rawProperty.priceMYR)}
+        </p>
+
+        {(rawProperty.media?.length ?? 0) > 0 && (
+          <section className="detail__section" aria-label={t('detail.gallery')}>
+            <div className="detail__gallery">
+              {(rawProperty.media ?? [])
+                .filter((item) => item.kind === 'photo')
+                .sort((a, b) => Number(b.isCover) - Number(a.isCover) || a.sortOrder - b.sortOrder)
+                .map((item) => (
+                  <figure className="detail__media" key={item.id}>
+                    <button
+                      type="button"
+                      className="detail__media-button"
+                      onClick={() => setExpandedImage(item.url)}
+                      aria-label={t('detail.enlargeImage')}
+                    >
+                      <img src={item.url} alt={item.altText ?? item.caption ?? rawProperty.propertyName} loading="lazy" />
+                    </button>
+                    <figcaption>
+                      {item.caption}
+                      {item.attribution && (
+                        <span className="detail__attribution">{t('detail.imageAttribution', { source: item.attribution })}</span>
+                      )}
+                    </figcaption>
+                  </figure>
+                ))}
+            </div>
+            {(rawProperty.media ?? []).some((item) => item.kind === 'floorplan') && (
+              <div className="detail__floorplans">
+                <h3>{t('detail.floorplans')}</h3>
+                {(rawProperty.media ?? [])
+                  .filter((item) => item.kind === 'floorplan')
+                  .map((item) => (
+                    <figure className="detail__media" key={item.id}>
+                      <a href={item.url} target="_blank" rel="noopener noreferrer">
+                        <img src={item.url} alt={item.altText ?? item.caption ?? t('detail.floorplan')} loading="lazy" />
+                      </a>
+                      <figcaption>
+                        {item.caption}
+                        {item.attribution && (
+                          <span className="detail__attribution">{t('detail.imageAttribution', { source: item.attribution })}</span>
+                        )}
+                      </figcaption>
+                    </figure>
+                  ))}
+              </div>
+            )}
+          </section>
+        )}
 
         <div className="detail__actions">
           <button
@@ -160,7 +222,7 @@ export default function PropertyDetailPage({
           </dl>
         </section>
 
-        {property ? (
+        {property && property.budgetStatus !== 'uncalculated' ? (
           <section className="detail__section">
             <h2 className="detail__section-title">{t('detail.affordabilityTitle')}</h2>
             <div className="stat-grid">
@@ -172,7 +234,7 @@ export default function PropertyDetailPage({
                 <p className="stat-card__label">{t('detail.availableCash')}</p>
                 <p className="stat-card__value">{formatMYR(property.downPaymentApplied)}</p>
                 <p className="stat-card__note">
-                  {property.cashShortfall > 0
+                  {property.cashShortfall !== null && property.cashShortfall > 0
                     ? t('detail.shortfall', { amount: formatMYR(property.cashShortfall) })
                     : t('detail.coversDownPayment')}
                 </p>
@@ -190,7 +252,9 @@ export default function PropertyDetailPage({
                 <p className="stat-card__label">{t('detail.estDsr')}</p>
                 <p
                   className={`stat-card__value ${
-                    property.estimatedDSR > ILLUSTRATIVE_DSR_CAP ? 'stat-card__value--accent' : ''
+                    property.estimatedDSR !== null && property.estimatedDSR > ILLUSTRATIVE_DSR_CAP
+                      ? 'stat-card__value--accent'
+                      : ''
                   }`}
                 >
                   {formatPercentage(property.estimatedDSR)}
@@ -213,6 +277,61 @@ export default function PropertyDetailPage({
         )}
 
         <section className="detail__section">
+          <h2 className="detail__section-title">{t('detail.moreFacts')}</h2>
+          <dl className="detail__facts">
+            {[
+              [t('explorer.propertyType'), rawProperty.propertyType],
+              [t('detail.priceBasis'), rawProperty.priceBasis],
+              [t('detail.landArea'), rawProperty.landArea == null ? null : `${rawProperty.landArea.toLocaleString()} ${rawProperty.landAreaUnit ?? ''}`.trim()],
+              [t('detail.tenure'), rawProperty.tenure],
+              [t('detail.completionDate'), rawProperty.completionDate],
+              [t('detail.furnishing'), rawProperty.furnishingStatus],
+              [t('detail.parkingBays'), rawProperty.parkingBays == null ? null : String(rawProperty.parkingBays)],
+              [t('detail.maintenance'), rawProperty.monthlyMaintenanceMYR == null ? null : formatMYR(rawProperty.monthlyMaintenanceMYR)],
+              [t('detail.sinkingFund'), rawProperty.sinkingFundMYR == null ? null : formatMYR(rawProperty.sinkingFundMYR)],
+              [t('detail.availability'), rawProperty.availabilityStatus === 'unknown' ? t('detail.availabilityUnknown') : rawProperty.availabilityStatus],
+              [t('detail.availabilityCheckedDate'), rawProperty.availabilityCheckedDate],
+              [t('detail.confidence'), rawProperty.confidenceStatus],
+            ].filter(([, value]) => value !== null && value !== undefined).map(([label, value]) => (
+              <div className="detail__fact" key={String(label)}>
+                <dt>{label}</dt>
+                <dd>{value}</dd>
+              </div>
+            ))}
+          </dl>
+          {(rawProperty.facilities?.length ?? 0) > 0 && (
+            <div>
+              <h3>{t('detail.facilities')}</h3>
+              <ul>{rawProperty.facilities?.map((facility) => <li key={facility}>{facility}</li>)}</ul>
+            </div>
+          )}
+          {(rawProperty.amenities?.length ?? 0) > 0 && (
+            <div>
+              <h3>{t('detail.nearbyAmenities')}</h3>
+              <ul>
+                {rawProperty.amenities?.map((amenity) => (
+                  <li key={amenity.name}>
+                    {amenity.name}
+                    {amenity.distanceKm != null ? ` — ${amenity.distanceKm} km (${t('detail.routeTypeUnknown')})` : ''}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {rawProperty.nearestTransit && (
+            <p>
+              <strong>{t('detail.nearestTransit')}:</strong> {rawProperty.nearestTransit}
+              {rawProperty.transitDistanceKm != null && ` — ${rawProperty.transitDistanceKm} km`}
+              {rawProperty.transitTravelTimeMin != null && `, ${rawProperty.transitTravelTimeMin} min`}
+              {(rawProperty.transitDistanceKm != null || rawProperty.transitTravelTimeMin != null) &&
+                ` (${rawProperty.transitMode ?? t('detail.routeTypeUnknown')})`}
+            </p>
+          )}
+          <p><strong>{t('detail.imagePermission')}:</strong> {rawProperty.imagePermission ?? t('common.unknown')}</p>
+          {rawProperty.notes && <p className="detail__source-notes">{rawProperty.notes}</p>}
+        </section>
+
+        <section className="detail__section">
           <h2 className="detail__section-title">{t('detail.provenanceTitle')}</h2>
           <dl className="detail__facts">
             <div className="detail__fact">
@@ -220,6 +339,14 @@ export default function PropertyDetailPage({
               <dd className={rawProperty.verifiedDate ? undefined : 'detail__fact--unknown'}>
                 {rawProperty.verifiedDate ?? t('status.notVerified')}
               </dd>
+            </div>
+            <div className="detail__fact">
+              <dt>{t('detail.sourceAccessed')}</dt>
+              <dd>{rawProperty.dateAccessed ?? t('common.unknown')}</dd>
+            </div>
+            <div className="detail__fact">
+              <dt>{t('detail.source')}</dt>
+              <dd>{rawProperty.sourceName ?? rawProperty.sourceType ?? t('common.unknown')}</dd>
             </div>
           </dl>
 
@@ -242,6 +369,25 @@ export default function PropertyDetailPage({
           <p className="disclaimer__text">{t('results.disclaimerText')}</p>
         </div>
       </article>
+      <AssistantChat
+        userInputs={affordabilityInputs}
+        affordabilityResult={affordabilityResult}
+        properties={properties}
+        selectedProperty={property}
+        comparisonProperties={comparisonProperties}
+        onNavigate={(section) => {
+          const target = document.getElementById(section);
+          target?.scrollIntoView({ behavior: 'smooth' });
+        }}
+      />
+      {expandedImage && (
+        <div className="detail__lightbox" role="dialog" aria-modal="true" aria-label={t('detail.gallery')}>
+          <button type="button" className="detail__lightbox-close" onClick={() => setExpandedImage(null)}>
+            {t('common.close')}
+          </button>
+          <img src={expandedImage} alt={rawProperty.propertyName} />
+        </div>
+      )}
     </div>
   );
 }

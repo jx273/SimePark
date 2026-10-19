@@ -132,8 +132,8 @@ export function calculateDownPayment(
  * calculation is never mistaken for a real zero.
  * Example: 450000 → "RM 450,000"
  */
-export function formatMYR(amount: number): string {
-  if (!Number.isFinite(amount)) return 'RM —';
+export function formatMYR(amount: number | null | undefined): string {
+  if (amount === null || amount === undefined || !Number.isFinite(amount)) return 'RM —';
   return `RM ${Math.round(amount).toLocaleString('en-MY')}`;
 }
 
@@ -141,7 +141,7 @@ export function formatMYR(amount: number): string {
  * Format a percentage value. Non-finite values are surfaced as "—".
  * Example: 35.5 → "35.5%"
  */
-export function formatPercentage(value: number, decimals: number = 1): string {
-  if (!Number.isFinite(value)) return '—';
+export function formatPercentage(value: number | null | undefined, decimals: number = 1): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—';
   return `${value.toFixed(decimals)}%`;
 }

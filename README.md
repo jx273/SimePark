@@ -32,7 +32,7 @@ homes, comparison, and multilingual support.
 | Affordability | Estimates a maximum property price as the **lower** of two ceilings: what the monthly repayment budget can service, and what available cash supports at a 10% down payment. Both are always shown, and the binding one is named. |
 | Debt service ratio | Illustrative 40%-of-gross-income cap, minus existing commitments. A product assumption, not a bank rule. |
 | Scenario simulator | Adjust extra cash, a target price, income, commitments, tenure and interest rate. Recalculated deterministically; never by the AI. |
-| Property explorer | Filters by location, type, minimum bedrooms, max price and affordability; sorts by match, price or repayment. |
+| Property explorer | Independent search with location, type, price, minimum bedrooms, facilities and affordability filters; switches between list and coordinate-backed map view. |
 | Budget status | **Within budget**, **Over monthly budget**, or **Insufficient down-payment cash** — a cash shortfall is never mislabelled as "too expensive". |
 | Provenance labels | **Example listing**, **Source provided**, **Verified on [date]**. "Verified" appears only when the record carries a genuine verification date. |
 | Accounts (optional) | Saved homes, up to three-way comparison, saved budget scenarios, preferences, activity, account settings, password reset. |
@@ -83,9 +83,10 @@ Key decisions:
 - **Hash routing.** Cloudflare Pages serves the SPA from one `index.html`; a deep link such
   as `/property/demo-001` would need a rewrite rule. Hash routes work on any static host
   with no server configuration.
-- **Guests are first-class.** Without Supabase configured the app runs on the bundled
-  demonstration dataset with browser-local favourites, and sign-in explains that it is
-  unavailable. Nothing crashes.
+- **Supabase is the production catalogue.** When configured, published property and media
+  records are read from Supabase; database errors are shown rather than masked by stale
+  local records. The bundled four-property source fixture is used only when Supabase is not
+  configured for local development.
 - **Supabase is lazy-loaded.** The client is ~228 kB and is imported dynamically, so a
   guest browsing properties never downloads it.
 
@@ -166,29 +167,51 @@ was created.
 
 1. **Create a project** at <https://supabase.com> (free tier is sufficient). Note the
    project URL.
-2. **Run the migrations.** Open **SQL Editor** in the dashboard and run these files, in
-   order, from `supabase/migrations/`:
-   - `0001_core_schema.sql` — tables, constraints, indexes, triggers, RLS policies
-   - `0002_seed_demo_properties.sql` — the same 15 demonstration records the app bundles
-   - `0003_admin_setup.sql` — **a template with commented statements**, not an automatic
-     change. Read it; it explains how to grant the first administrator.
-3. **Get the API keys.** Project Settings → **API keys**. Copy the **publishable** key
+2. **Inspect the current database before applying migrations.** Back up the project and
+    review the IDs in `0004_property_catalogue.sql`. It only removes the explicit legacy
+    `demo-001`–`demo-015` property rows, and only if there are no saved-home, comparison,
+    activity, or media rows referencing them. It aborts if any other property IDs are
+    present. It never deletes user-owned records. If the guard stops, review the affected
+    rows and decide separately how to retain or remove them; do not weaken the guard to
+    force the migration through.
+3. **Apply only pending migrations** from `supabase/migrations/`. For a fresh project, run
+   `0001_core_schema.sql`, `0002_seed_demo_properties.sql`, then
+   `0004_property_catalogue.sql` and `0005_prototype_public_media.sql`. File
+   `0003_admin_setup.sql` is a commented provisioning
+   template, not an executable migration. For an existing project, do not blindly rerun
+   already-applied files: check migration history and apply `0004_property_catalogue.sql`
+   and `0005_prototype_public_media.sql` if they are pending. `0002_seed_demo_properties.sql`
+   is a no-op and cannot re-seed demo properties. `0004` adds the metadata/media schema,
+   safely removes known legacy rows, and imports SP-001–SP-004. Its `ON CONFLICT DO NOTHING`
+   import cannot overwrite later Admin edits and does not run at app startup. `0005` allows
+   public gallery metadata reads for published properties even when image permission is
+   unknown; it is for prototype display only and is not a grant of redistribution rights.
+4. **Get the API keys.** Project Settings → **API keys**. Copy the **publishable** key
    (older projects label it "anon"). Put it in `VITE_SUPABASE_PUBLISHABLE_KEY`, and the
    project URL in `VITE_SUPABASE_URL`, in `.env`.
-4. **Configure authentication redirect URLs.** Authentication → **URL Configuration**:
+5. **Configure authentication redirect URLs.** Authentication → **URL Configuration**:
    - Site URL: `http://localhost:5173` for local work, and your production URL later.
-   - Redirect URLs: add `http://localhost:5173/#/auth/callback` and
-     `https://your-project.pages.dev/#/auth/callback`.
-5. **Decide the email confirmation behaviour.** Authentication → Providers → Email:
-   - **Confirm email ON** (default): after signing up, the UI says a confirmation link was
-     sent and the user cannot sign in until they click it. This is what the app's
-     "check your email" state describes.
-   - **Confirm email OFF**: sign-up returns an active session immediately and the user goes
-     straight to the dashboard. Useful for a demo, but it means anyone can register with an
-     address they do not own.
-6. **Test password reset.** Sign in, sign out, choose "Forgot your password?", and follow
+   - Redirect URLs: add `http://localhost:5173/auth/callback`,
+     `http://localhost:5173/auth/reset`, `https://your-project.pages.dev/auth/callback`,
+     and `https://your-project.pages.dev/auth/reset`. Cloudflare Pages rewrites these
+     callback paths to the SPA using `public/_redirects`; keep them path-based so Supabase's
+     authorization code remains in the query string.
+6. **Disable email confirmation for this prototype.** In Supabase Dashboard →
+   Authentication → Sign In / Providers → Email, turn off **Confirm email**. Supabase
+   returns an active session immediately after sign-up; no custom SMTP is required. If the
+   setting remains on, the app explicitly says that confirmation is blocking sign-in and
+   asks the operator to change the project setting. No email delivery is claimed or tested.
+7. **Test password reset.** Sign in, sign out, choose "Forgot your password?", and follow
    the emailed link. It returns to `/#/auth/reset`, where the user sets a new password.
-7. **Grant the first administrator** — see below.
+8. **Grant the first administrator** — see below.
+
+The supplied photographs and floor plans are shown in the prototype gallery, with
+attribution and the original `unknown` permission status preserved. This display is not a
+claim of redistribution permission. Files under `public/media/` are directly fetchable if
+deployed, regardless of database policies. Confirm you have permission to publish them
+before a public deployment; otherwise remove them from `public/`. Review the Admin
+permission status before publishing future uploads. Admin uploads are stored in the
+private `property-media` bucket.
 
 ### Granting the first administrator safely
 
@@ -197,12 +220,16 @@ policies at all**. Consequently no API request from any signed-in user can read 
 and nothing in the application inserts into it. There is no "make me admin" button,
 endpoint, or client function anywhere in this codebase.
 
-1. Sign up normally through the app and confirm your email.
-2. In Supabase, open **Authentication → Users** and copy your user's UUID.
-3. Uncomment the `insert into public.admin_user_ids ...` statement at the top of
-   `0003_admin_setup.sql`, replace the placeholder UUID, and run it in the SQL Editor.
-4. Reload the app. The **Admin** entry appears in the header.
-5. Verify the security property: as a signed-in non-admin, attempt
+1. Confirm the schema migrations are applied and `public.admin_user_ids` and
+   `public.is_admin()` exist.
+2. Sign up through the app after applying the prototype's email-confirmation setting above.
+3. In Supabase, open **Authentication → Users** and copy your own user's UUID.
+4. In the SQL Editor, run the administrator grant statement documented in
+   `0003_admin_setup.sql`, replacing the placeholder with your UUID. Never use a
+   service-role key in the frontend.
+5. Reload the app. The Admin link appears for the authorized account; the route is
+   `/#/admin`.
+6. Verify the security property: as a signed-in non-admin, attempt
    `insert into public.admin_user_ids (user_id) values (auth.uid());`. Expect
    `ERROR: new row violates row-level security policy`. That error is the guarantee.
 
@@ -256,7 +283,7 @@ performed or verified from this environment.**
 10. **Verify `/api/assistant`** by sending one chat message and confirming a real answer
     rather than the "not configured" message.
 11. **Verify authentication and database permissions.** Add the production
-    `/#/auth/callback` URL to Supabase's redirect list (step 4 of the Supabase section),
+    `/auth/callback` and `/auth/reset` URLs to Supabase's redirect list (step 5 of the Supabase section),
     then sign up, confirm, sign in, save a home, reload, and confirm it is still there.
 
 Optional CLI alternative to steps 3–8:
@@ -285,7 +312,7 @@ npm run cf:deploy
 ## Testing
 
 ```bash
-npm test          # 367 tests
+npm test          # 384 tests in the latest verified run
 npm run typecheck # tsc -b
 npm run build     # typecheck + production build
 ```
@@ -303,7 +330,7 @@ UI tests run under `happy-dom` via a per-file `@vitest-environment happy-dom` do
 
 **Verified in this environment:**
 
-- the full test suite and the production build;
+- the full test suite (384 tests) and the production build;
 - the `/api/assistant` endpoint locally, including a **real Gemini reply** with the
   project's own key, and a live check that replies come back in English, Bahasa Melayu and
   Simplified Chinese;
@@ -314,9 +341,11 @@ UI tests run under `happy-dom` via a per-file `@vitest-environment happy-dom` do
 **Not verified:**
 
 - **any deployment**, Cloudflare or otherwise;
-- the real Supabase integration end to end (no project or credentials were available). The
-  SQL migrations, RLS policies, and admin procedure were written and reviewed but have not
-  been executed against a live database;
+- the real Supabase integration end to end. The database was inspected read-only and
+  exposed 15 published legacy demo IDs; no database write or migration was executed.
+  Signup, profile creation, email delivery, authorized Admin CRUD, and media upload remain
+  untested against a live authorized project. An authorized operator must review and apply
+  `0004_property_catalogue.sql` before the production catalogue contains only SP-001–SP-004;
 - email confirmation and password-reset delivery, which need a configured project and a
   mailbox;
 - `npm run cf:preview`, which needs `wrangler login`;
@@ -371,8 +400,13 @@ src/
 
 ## Known limitations
 
-- Property records are **demonstration data** (`is_example: true`, no source URL, no
-  verification date). They are not real listings, and the UI labels them as such.
+- The four supplied records retain source-based listing details, but their availability is
+  unknown, their coordinates are missing, and image redistribution permission is unknown.
+  Those states are preserved. Source listing URLs do not grant image redistribution rights.
+- The supplied photographs and floor plans are displayed in the prototype with their
+  permission status still marked `unknown`. **The files in `public/media/` are directly
+  fetchable as static assets if deployed, regardless of database gallery policy.** Confirm
+  redistribution rights before public deployment or remove these files from `public/`.
 - Only the down payment and the mortgage repayment are modelled. Stamp duty, legal fees,
   valuation fees, insurance and maintenance are excluded from every calculation. The
   assistant describes those categories in general terms without quoting specific rates,

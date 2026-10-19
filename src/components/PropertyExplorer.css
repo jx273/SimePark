@@ -10,6 +10,38 @@
   border: 1px solid var(--color-border-light);
 }
 
+.explorer__facility-filter {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--border-radius);
+}
+
+.explorer__facility-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1.25rem;
+  margin-top: 0.75rem;
+}
+
+.explorer__view-toggle {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.explorer__map {
+  min-height: 14rem;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--border-radius-lg);
+  background-color: var(--color-bg-white);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
 .explorer__filter {
   display: flex;
   flex-direction: column;

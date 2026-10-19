@@ -78,3 +78,22 @@
   color: var(--color-error);
   background-color: var(--color-error-soft);
 }
+
+.compare__media {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  min-width: 150px;
+}
+
+.compare__media a {
+  display: block;
+}
+
+.compare__media img {
+  width: 88px;
+  height: 64px;
+  object-fit: cover;
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-sm);
+}

@@ -47,6 +47,7 @@
   --color-text-secondary: #5F5459;   /* Warm neutral grey */
   --color-text-muted: #928489;
   --color-text-inverse: #FFF7F3;
+  --color-text-on-hero: #FFF7F3;
 
   /* Accent */
   --color-accent: var(--brand-orange);
@@ -333,19 +334,19 @@ input, select {
 }
 
 .btn--hero-primary {
-  background-color: var(--color-text-inverse);
-  color: var(--color-primary);
+  background-color: var(--color-text-on-hero);
+  color: var(--brand-red-dark);
   font-weight: var(--font-weight-bold);
 }
 .btn--hero-primary:hover {
-  background-color: var(--color-bg-white);
+  background-color: var(--color-text-on-hero);
   transform: translateY(-2px);
   box-shadow: var(--shadow-lg);
 }
 
 .btn--hero-secondary {
   background-color: transparent;
-  color: var(--color-text-inverse);
+  color: var(--color-text-on-hero);
   border: 2px solid var(--color-border-strong);
 }
 .btn--hero-secondary:hover {
@@ -417,6 +418,7 @@ input, select {
   border-radius: var(--border-radius);
   background-color: var(--color-bg-white);
   color: var(--color-text);
+  color: var(--color-text);
   font-size: var(--font-size-base);
   transition: border-color var(--transition-fast);
   appearance: none;
@@ -424,6 +426,9 @@ input, select {
   background-repeat: no-repeat;
   background-position: right var(--space-md) center;
   padding-right: var(--space-2xl);
+}
+[data-theme='dark'] .form-select {
+  background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23CDBAB4' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
 }
 .form-select:focus {
   outline: none;

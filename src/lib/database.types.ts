@@ -8,6 +8,10 @@
  *
  * Nullable columns are typed `| null` deliberately. The UI must render null as
  * "Not recorded" and must never substitute a zero or a guess.
+ *
+ * Delivered catalogue: exactly SP-001..SP-004. The legacy demo-001..demo-015
+ * records are removed by `0004_property_catalogue.sql`, and the seed migration
+ * that used to recreate them is now a cleanup-only no-op.
  */
 
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
@@ -16,13 +20,44 @@ export type PropertyRow = {
   id: string;
   property_name: string;
   location: string;
+  address: string | null;
   price_myr: number | null;
+  price_min_myr: number | null;
+  price_max_myr: number | null;
+  price_basis: string | null;
   property_type: string | null;
   bedrooms: number | null;
   bathrooms: number | null;
   built_up_sqft: number | null;
+  land_area: number | null;
+  land_area_unit: string | null;
+  monthly_maintenance_myr: number | null;
+  sinking_fund_myr: number | null;
+  tenure: string | null;
+  completion_date: string | null;
+  parking_bays: number | null;
+  furnishing_status: string | null;
+  availability_status: string;
+  availability_checked_date: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  location_precision: string;
+  nearest_transit: string | null;
+  transit_distance_km: number | null;
+  transit_travel_time_min: number | null;
+  transit_mode: string | null;
+  nearby_amenity: string | null;
+  amenity_distance_km: number | null;
+  facilities: string[];
   source_url: string | null;
+  source_type: string | null;
+  source_name: string | null;
   verified_date: string | null;
+  date_accessed: string | null;
+  confirmed_by_role: string | null;
+  confidence_status: string | null;
+  image_permission: string | null;
+  notes: string | null;
   is_example: boolean;
   is_published: boolean;
   created_by: string | null;
@@ -34,19 +69,86 @@ export type PropertyInsert = {
   id?: string;
   property_name: string;
   location: string;
+  address?: string | null;
   price_myr?: number | null;
+  price_min_myr?: number | null;
+  price_max_myr?: number | null;
+  price_basis?: string | null;
   property_type?: string | null;
   bedrooms?: number | null;
   bathrooms?: number | null;
   built_up_sqft?: number | null;
+  land_area?: number | null;
+  land_area_unit?: string | null;
+  monthly_maintenance_myr?: number | null;
+  sinking_fund_myr?: number | null;
+  tenure?: string | null;
+  completion_date?: string | null;
+  parking_bays?: number | null;
+  furnishing_status?: string | null;
+  availability_status?: string;
+  availability_checked_date?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  location_precision?: string;
+  nearest_transit?: string | null;
+  transit_distance_km?: number | null;
+  transit_travel_time_min?: number | null;
+  transit_mode?: string | null;
+  nearby_amenity?: string | null;
+  amenity_distance_km?: number | null;
+  facilities?: string[];
   source_url?: string | null;
+  source_type?: string | null;
+  source_name?: string | null;
   verified_date?: string | null;
+  date_accessed?: string | null;
+  confirmed_by_role?: string | null;
+  confidence_status?: string | null;
+  image_permission?: string | null;
+  notes?: string | null;
   is_example?: boolean;
   is_published?: boolean;
   created_by?: string | null;
 }
 
 export type PropertyUpdate = Partial<PropertyInsert>;
+
+/** One photograph or floor plan. Belongs to exactly one property. */
+export type PropertyMediaRow = {
+  id: string;
+  property_id: string;
+  url: string;
+  kind: string;
+  caption: string | null;
+  alt_text: string | null;
+  is_cover: boolean;
+  sort_order: number;
+  attribution: string | null;
+  permission_status: string | null;
+  watermarked_url: string | null;
+  original_url: string | null;
+  storage_path: string | null;
+  created_at: string;
+}
+
+export type PropertyMediaInsert = {
+  id?: string;
+  property_id: string;
+  url: string;
+  kind: string;
+  caption?: string | null;
+  alt_text?: string | null;
+  is_cover?: boolean;
+  sort_order?: number;
+  attribution?: string | null;
+  permission_status?: string | null;
+  watermarked_url?: string | null;
+  original_url?: string | null;
+  storage_path?: string | null;
+}
+
+export type PropertyMediaUpdate = Partial<PropertyMediaInsert>;
 
 export type ProfileRow = {
   id: string;
@@ -156,6 +258,11 @@ export interface Database {
   public: {
     Tables: {
       properties: TableShape<PropertyRow, PropertyInsert, PropertyUpdate>;
+      property_media: TableShape<
+        PropertyMediaRow,
+        PropertyMediaInsert,
+        PropertyMediaUpdate
+      >;
       profiles: TableShape<
         ProfileRow,
         Partial<ProfileRow> & { id: string },
