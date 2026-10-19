@@ -56,6 +56,8 @@ const en = {
     menu: 'Menu',
     openMenu: 'Open navigation menu',
     closeMenu: 'Close navigation menu',
+    collapseSidebar: 'Collapse sidebar',
+    expandSidebar: 'Expand sidebar',
   },
   controls: {
     language: 'Language',
@@ -300,6 +302,7 @@ const en = {
     confidence: 'Data confidence',
     facilities: 'Facilities',
     nearbyAmenities: 'Nearby amenities (reported)',
+    reportedDistance: 'Reported distance',
     nearestTransit: 'Nearest transit',
     routeTypeUnknown: 'reported route distance; route type not specified',
     imagePermission: 'Image-use permission',
@@ -470,6 +473,18 @@ const en = {
     backToSignIn: 'Back to sign in',
     or: 'or',
     continueAsGuest: 'Continue without an account',
+    demoAccountTitle: 'Hackathon demo accounts',
+    demoUser: 'Use Demo User',
+    demoAdmin: 'Use Demo Admin',
+    demoAccountHelp:
+      'Select an account email, then enter the password supplied privately by the demo organiser. Passwords are never displayed here.',
+    callbackTitle: 'Email link result',
+    callbackProgress: 'Checking the email link…',
+    callbackSuccess: 'Your email link was accepted. You are signed in.',
+    callbackFailed:
+      'This email link could not establish a session. It may have expired, or the redirect URL may not be allow-listed in Supabase.',
+    callbackContinue: 'Continue to SimePark',
+    callbackSignIn: 'Go to sign in',
     confirmEmailTitle: 'Email confirmation is blocking sign-in',
     confirmEmailText:
       'Email confirmation is enabled for this Supabase project, so you cannot sign in yet. For this prototype, open Supabase Dashboard → Authentication → Sign In / Providers → Email and turn off Confirm email, then create your account again. No custom SMTP is needed.',

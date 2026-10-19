@@ -1,7 +1,7 @@
 /* ---------- Property detail page ---------- */
 
 .detail {
-  padding-top: var(--space-xl);
+  padding-top: var(--space-md);
   padding-bottom: var(--space-4xl);
 }
 
@@ -202,6 +202,16 @@
   border-left: 3px solid var(--color-primary);
   background: var(--color-bg-section);
   white-space: pre-wrap;
+}
+
+.detail__reported-distance {
+  display: inline-block;
+  margin-left: var(--space-sm);
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--color-bg-section);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
 }
 
 .detail__lightbox {

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
 import type { i18n as I18nInstance } from 'i18next';
-import PropertyMap from '../PropertyMap';
+import PropertyMap, { hasVerifiedCoordinates } from '../PropertyMap';
 import { createTestI18n } from '../../test/testI18n';
 
 let i18n: I18nInstance;
@@ -30,5 +30,29 @@ describe('PropertyMap', () => {
       )
     ).toBeTruthy();
     expect(document.querySelector('.property-map')).toBeNull();
+  });
+
+  it('accepts only in-range, explicitly verified coordinates for markers', () => {
+    expect(
+      hasVerifiedCoordinates({
+        latitude: 3.139,
+        longitude: 101.6869,
+        locationPrecision: 'verified',
+      })
+    ).toBe(true);
+    expect(
+      hasVerifiedCoordinates({
+        latitude: 3.139,
+        longitude: 101.6869,
+        locationPrecision: 'approximate',
+      })
+    ).toBe(false);
+    expect(
+      hasVerifiedCoordinates({
+        latitude: 91,
+        longitude: 101.6869,
+        locationPrecision: 'verified',
+      })
+    ).toBe(false);
   });
 });

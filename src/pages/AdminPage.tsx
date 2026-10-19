@@ -122,7 +122,7 @@ function nullableNumber(value: string): number | null {
  */
 export default function AdminPage() {
   const { t } = useTranslation();
-  const { user, isConfigured, isAdmin } = useAuth();
+  const { user, isConfigured, isAdmin, isLoading: authLoading } = useAuth();
 
   const [rows, setRows] = useState<PropertyRow[]>([]);
   const [media, setMedia] = useState<PropertyMediaRow[]>([]);
@@ -408,6 +408,15 @@ export default function AdminPage() {
         <div className="notice notice--warning" role="status">
           {t('admin.notConfigured')}
         </div>
+      </div>
+    );
+  }
+
+  if (authLoading) {
+    return (
+      <div className="container admin">
+        <h1 className="section__title">{t('admin.title')}</h1>
+        <p role="status">{t('common.loading')}</p>
       </div>
     );
   }
