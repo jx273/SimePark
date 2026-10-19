@@ -41,6 +41,32 @@ export default function AuthPage({ mode }: AuthPageProps) {
   const [error, setError] = useState<AuthErrorKey | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [initialAuthParams] = useState(() =>
+    typeof window === 'undefined'
+      ? new URLSearchParams()
+      : new URLSearchParams(window.location.search)
+  );
+  const [initialAuthFragment] = useState(() =>
+    typeof window === 'undefined'
+      ? new URLSearchParams()
+      : new URLSearchParams(window.location.hash.replace(/^#/, ''))
+  );
+  const isPasswordResetCallback =
+    mode === 'reset' &&
+    (initialAuthParams.has('code') ||
+      (initialAuthFragment.get('type') === 'recovery' &&
+        initialAuthFragment.has('access_token')));
+  const demoUserEmail = import.meta.env.VITE_DEMO_USER_EMAIL?.trim() ?? '';
+  const demoAdminEmail = import.meta.env.VITE_DEMO_ADMIN_EMAIL?.trim() ?? '';
+  const callbackError =
+    initialAuthParams.has('error') ||
+    initialAuthParams.has('error_description') ||
+    initialAuthFragment.has('error') ||
+    (typeof window !== 'undefined' && /(?:^|[&#])error(?:=|&|$)/.test(window.location.hash));
+  const callbackHasResponse =
+    initialAuthParams.has('code') ||
+    initialAuthParams.has('token_hash') ||
+    (typeof window !== 'undefined' && /(?:^|[&#])access_token=/.test(window.location.hash));
 
   // Already signed in: send them to the dashboard rather than showing a form.
   useEffect(() => {
@@ -106,21 +132,7 @@ export default function AuthPage({ mode }: AuthPageProps) {
         return;
       }
 
-      if (mode === 'reset') {
-        const emailError = validateEmail(email);
-        if (emailError) {
-          setError(emailError);
-          return;
-        }
-        const result = await requestPasswordReset(email);
-        if (result) setError(result);
-        else setNotice(t('auth.resetSent'));
-        return;
-      }
-
-      if (mode === 'callback') {
-        // Reached from the emailed link, where Supabase has already established a
-        // session. The user now chooses a new password.
+      if (mode === 'reset' && isPasswordResetCallback) {
         const passwordError = validatePassword(password);
         if (passwordError) {
           setError(passwordError);
@@ -134,9 +146,23 @@ export default function AuthPage({ mode }: AuthPageProps) {
         if (result) setError(result);
         else {
           setNotice(t('auth.passwordUpdated'));
-          window.setTimeout(() => navigate({ name: 'dashboard' }), 1200);
+          window.setTimeout(() => navigate({ name: 'auth', mode: 'signin' }), 1200);
         }
+        return;
       }
+
+      if (mode === 'reset') {
+        const emailError = validateEmail(email);
+        if (emailError) {
+          setError(emailError);
+          return;
+        }
+        const result = await requestPasswordReset(email);
+        if (result) setError(result);
+        else setNotice(t('auth.resetSent'));
+        return;
+      }
+
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -152,11 +178,64 @@ export default function AuthPage({ mode }: AuthPageProps) {
     signin: { title: t('auth.signInTitle'), subtitle: t('auth.signInSubtitle') },
     signup: { title: t('auth.signUpTitle'), subtitle: t('auth.signUpSubtitle') },
     reset: { title: t('auth.resetTitle'), subtitle: t('auth.resetSubtitle') },
-    callback: { title: t('auth.resetTitle'), subtitle: t('auth.newPassword') },
+    callback: { title: t('auth.callbackTitle'), subtitle: t('auth.callbackProgress') },
   };
 
-  const showPassword = mode !== 'reset';
-  const showConfirm = mode === 'signup' || mode === 'callback';
+  if (mode === 'callback') {
+    const callbackSucceeded =
+      !isLoading && Boolean(user) && callbackHasResponse && !callbackError;
+    const callbackFailed = !isLoading && !callbackSucceeded;
+    return (
+      <div className="container auth-page">
+        <div className="auth-page__card surface">
+          <h1 className="auth-page__title">{t('auth.callbackTitle')}</h1>
+          <p className="auth-page__subtitle">
+            {isLoading
+              ? t('auth.callbackProgress')
+              : callbackSucceeded
+                ? t('auth.callbackSuccess')
+                : t('auth.callbackFailed')}
+          </p>
+          {callbackFailed && (
+            <div className="notice notice--warning" role="alert">
+              {t('auth.callbackFailed')}
+            </div>
+          )}
+          {!isLoading && (
+            <div className="auth-page__callback-actions">
+              {callbackSucceeded ? (
+                <button
+                  type="button"
+                  className="btn btn--primary"
+                  onClick={() => navigate({ name: 'dashboard' })}
+                >
+                  {t('auth.callbackContinue')}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn--primary"
+                  onClick={() => navigate({ name: 'auth', mode: 'signin' })}
+                >
+                  {t('auth.callbackSignIn')}
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => navigate({ name: 'home' })}
+              >
+                {t('auth.continueAsGuest')}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const showPassword = mode !== 'reset' || isPasswordResetCallback;
+  const showConfirm = mode === 'signup' || isPasswordResetCallback;
 
   return (
     <div className="container auth-page">
@@ -173,6 +252,32 @@ export default function AuthPage({ mode }: AuthPageProps) {
         {isLoading && <p className="auth-page__loading">{t('common.loading')}</p>}
 
         <form onSubmit={submit} noValidate>
+          {mode === 'signin' && (demoUserEmail || demoAdminEmail) && (
+            <section className="auth-page__demo" aria-label={t('auth.demoAccountTitle')}>
+              <h2>{t('auth.demoAccountTitle')}</h2>
+              <p>{t('auth.demoAccountHelp')}</p>
+              <div className="auth-page__demo-actions">
+                {demoUserEmail && (
+                  <button
+                    type="button"
+                    className="btn btn--outline btn--sm"
+                    onClick={() => setEmail(demoUserEmail)}
+                  >
+                    {t('auth.demoUser')}
+                  </button>
+                )}
+                {demoAdminEmail && (
+                  <button
+                    type="button"
+                    className="btn btn--outline btn--sm"
+                    onClick={() => setEmail(demoAdminEmail)}
+                  >
+                    {t('auth.demoAdmin')}
+                  </button>
+                )}
+              </div>
+            </section>
+          )}
           {mode === 'signup' && (
             <div className="form-group">
               <label className="form-label" htmlFor="displayName">
@@ -191,29 +296,27 @@ export default function AuthPage({ mode }: AuthPageProps) {
             </div>
           )}
 
-          {mode !== 'callback' && (
-            <div className="form-group">
-              <label className="form-label" htmlFor="email">
-                {t('auth.email')}
-              </label>
-              <input
-                id="email"
-                type="email"
-                className="form-input"
-                autoComplete="email"
-                required
-                value={email}
-                placeholder={t('auth.emailPlaceholder')}
-                onChange={(event) => setEmail(event.target.value)}
-                aria-invalid={error === 'invalidEmail'}
-              />
-            </div>
-          )}
+          <div className="form-group">
+            <label className="form-label" htmlFor="email">
+              {t('auth.email')}
+            </label>
+            <input
+              id="email"
+              type="email"
+              className="form-input"
+              autoComplete="email"
+              required
+              value={email}
+              placeholder={t('auth.emailPlaceholder')}
+              onChange={(event) => setEmail(event.target.value)}
+              aria-invalid={error === 'invalidEmail'}
+            />
+          </div>
 
           {showPassword && (
             <div className="form-group">
               <label className="form-label" htmlFor="password">
-                {mode === 'callback' ? t('auth.newPassword') : t('auth.password')}
+                {isPasswordResetCallback ? t('auth.newPassword') : t('auth.password')}
               </label>
               <input
                 id="password"
@@ -273,13 +376,13 @@ export default function AuthPage({ mode }: AuthPageProps) {
               ? mode === 'signup'
                 ? t('auth.signingUp')
                 : t('auth.signingIn')
-              : mode === 'signin'
-                ? t('auth.signIn')
-                : mode === 'signup'
-                  ? t('auth.signUp')
-                  : mode === 'reset'
-                    ? t('auth.resetPassword')
-                    : t('auth.updatePassword')}
+              : isPasswordResetCallback
+                ? t('auth.updatePassword')
+                : mode === 'signin'
+                  ? t('auth.signIn')
+                  : mode === 'signup'
+                    ? t('auth.signUp')
+                    : t('auth.resetPassword')}
           </button>
         </form>
 

@@ -73,6 +73,7 @@ function AppShell() {
 
   const [userInputs, setUserInputs] = useState<AffordabilityInputs | null>(readFinancialInputs);
   const [navOpen, setNavOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeSection, setActiveSection] = useState('home');
   const [importedRate, setImportedRate] = useState<number | null>(null);
 
@@ -125,6 +126,40 @@ function AppShell() {
     const prefersReduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     window.scrollTo({ top, behavior: prefersReduced ? 'auto' : 'smooth' });
   }, []);
+
+  useEffect(() => {
+    if (route.name !== 'home') return;
+
+    let frame = 0;
+    const updateActiveSection = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const sections = [
+          ['hero', 'home'],
+          ['affordability', 'affordability'],
+          ['properties', 'properties'],
+          ['compare', 'compare'],
+          ['simulator', 'simulator'],
+          ['bank-rates', 'bank-rates'],
+          ['assistant', 'assistant'],
+        ] as const;
+        const active = sections
+          .filter(([id]) => {
+            const element = document.getElementById(id);
+            return element !== null && element.getBoundingClientRect().top <= 128;
+          });
+        const lastActive = active[active.length - 1];
+        setActiveSection(lastActive?.[1] ?? 'home');
+      });
+    };
+
+    updateActiveSection();
+    window.addEventListener('scroll', updateActiveSection, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', updateActiveSection);
+    };
+  }, [route.name]);
 
   const catalogWithCalculations: PropertyWithCalculations[] = useMemo(
     () =>
@@ -218,7 +253,7 @@ function AppShell() {
   };
 
   return (
-    <div className="app">
+    <div className={`app${sidebarCollapsed ? ' app--sidebar-collapsed' : ''}`}>
       <p className="sr-only" role="status" aria-live="polite">
         {isLoading ? t('common.loading') : ''}
       </p>
@@ -234,6 +269,8 @@ function AppShell() {
           route={route}
           open={navOpen}
           activeSection={activeSection}
+          collapsed={sidebarCollapsed}
+          onToggleCollapsed={() => setSidebarCollapsed((collapsed) => !collapsed)}
           onClose={() => setNavOpen(false)}
           onNavigateSection={scrollToSection}
         />

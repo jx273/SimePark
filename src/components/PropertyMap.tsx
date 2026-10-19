@@ -16,23 +16,38 @@ type MappedProperty = {
   longitude: number;
 };
 
+export function hasVerifiedCoordinates(
+  property: Pick<
+    PropertyWithCalculations,
+    'latitude' | 'longitude' | 'locationPrecision'
+  >
+): property is Pick<
+  PropertyWithCalculations,
+  'latitude' | 'longitude' | 'locationPrecision'
+> & { latitude: number; longitude: number; locationPrecision: 'verified' } {
+  return (
+    property.locationPrecision === 'verified' &&
+    typeof property.latitude === 'number' &&
+    Number.isFinite(property.latitude) &&
+    property.latitude >= -90 &&
+    property.latitude <= 90 &&
+    typeof property.longitude === 'number' &&
+    Number.isFinite(property.longitude) &&
+    property.longitude >= -180 &&
+    property.longitude <= 180
+  );
+}
+
 export default function PropertyMap({ properties, onViewDetails }: PropertyMapProps) {
   const { t } = useTranslation();
   const elementRef = useRef<HTMLDivElement>(null);
   const mappedProperties = useMemo(
     () =>
       properties.flatMap((property): MappedProperty[] => {
-        const { latitude, longitude } = property;
-        if (
-          property.locationPrecision === 'unknown' ||
-          typeof latitude !== 'number' ||
-          !Number.isFinite(latitude) ||
-          typeof longitude !== 'number' ||
-          !Number.isFinite(longitude)
-        ) {
+        if (!hasVerifiedCoordinates(property)) {
           return [];
         }
-        return [{ property, latitude, longitude }];
+        return [{ property, latitude: property.latitude, longitude: property.longitude }];
       }),
     [properties]
   );
@@ -49,37 +64,31 @@ export default function PropertyMap({ properties, onViewDetails }: PropertyMapPr
 
     const markers: L.CircleMarker[] = [];
     for (const { property, latitude, longitude } of mappedProperties) {
-      const approximate = property.locationPrecision === 'approximate';
       const marker = L.circleMarker([latitude, longitude], {
-        radius: approximate ? 11 : 7,
-        color: approximate ? '#a86100' : '#176b87',
-        fillColor: approximate ? '#ffd18a' : '#42a4c7',
-        fillOpacity: approximate ? 0.42 : 0.8,
+        radius: 7,
+        color: '#176b87',
+        fillColor: '#42a4c7',
+        fillOpacity: 0.8,
         weight: 2,
-        dashArray: approximate ? '4 3' : undefined,
       }).addTo(map);
 
       const content = document.createElement('div');
       const title = document.createElement('strong');
       title.textContent = property.propertyName;
       const location = document.createElement('p');
-      location.textContent = approximate
-        ? t('explorer.approximateLocation')
-        : property.location;
+      location.textContent = property.location;
       const detailsButton = document.createElement('button');
       detailsButton.type = 'button';
       detailsButton.textContent = t('explorer.mapViewDetails');
       detailsButton.addEventListener('click', () => onViewDetails(property));
       content.append(title, location, detailsButton);
-      if (property.locationPrecision === 'verified') {
-        const directions = document.createElement('a');
-        directions.href = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
-        directions.target = '_blank';
-        directions.rel = 'noopener noreferrer';
-        directions.textContent = t('explorer.directions');
-        directions.style.display = 'block';
-        content.append(directions);
-      }
+      const directions = document.createElement('a');
+      directions.href = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
+      directions.target = '_blank';
+      directions.rel = 'noopener noreferrer';
+      directions.textContent = t('explorer.directions');
+      directions.style.display = 'block';
+      content.append(directions);
       marker.bindPopup(content);
       markers.push(marker);
     }

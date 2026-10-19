@@ -189,18 +189,27 @@ was created.
 4. **Get the API keys.** Project Settings → **API keys**. Copy the **publishable** key
    (older projects label it "anon"). Put it in `VITE_SUPABASE_PUBLISHABLE_KEY`, and the
    project URL in `VITE_SUPABASE_URL`, in `.env`.
-5. **Configure authentication redirect URLs.** Authentication → **URL Configuration**:
-   - Site URL: `http://localhost:5173` for local work, and your production URL later.
-   - Redirect URLs: add `http://localhost:5173/auth/callback`,
-     `http://localhost:5173/auth/reset`, `https://your-project.pages.dev/auth/callback`,
-     and `https://your-project.pages.dev/auth/reset`. Cloudflare Pages rewrites these
-     callback paths to the SPA using `public/_redirects`; keep them path-based so Supabase's
-     authorization code remains in the query string.
+5. **Configure authentication URLs.** Authentication → **URL Configuration**:
+   - Set **Site URL** to the canonical deployed SimePark URL (for example,
+     `https://your-project.pages.dev`). This is Supabase's default/fallback, not a
+     per-environment setting.
+   - Add the exact app callback URLs to **Redirect URLs**:
+     `http://localhost:5173/auth/callback`, `http://localhost:5173/auth/reset`,
+     `https://your-project.pages.dev/auth/callback`, and
+     `https://your-project.pages.dev/auth/reset`. Add `http://localhost:5174/auth/callback`
+     and `/auth/reset` only when deliberately using the temporary 5174 development port.
+     Signup passes the current app origin plus `/auth/callback` as `emailRedirectTo`;
+     password reset uses `/auth/reset`. Cloudflare Pages rewrites these clean paths to
+     the SPA through `public/_redirects`, preserving Supabase's authorization code.
 6. **Disable email confirmation for this prototype.** In Supabase Dashboard →
    Authentication → Sign In / Providers → Email, turn off **Confirm email**. Supabase
    returns an active session immediately after sign-up; no custom SMTP is required. If the
    setting remains on, the app explicitly says that confirmation is blocking sign-in and
    asks the operator to change the project setting. No email delivery is claimed or tested.
+   The app's callback page reports accepted and expired/error links instead of showing a
+   blank page. A link already sent to `localhost:5174` still needs that local server running
+   and `http://localhost:5174/auth/callback` allow-listed; prefer the deployed URL for a
+   link that must be opened on another device.
 7. **Test password reset.** Sign in, sign out, choose "Forgot your password?", and follow
    the emailed link. It returns to `/#/auth/reset`, where the user sets a new password.
 8. **Grant the first administrator** — see below.
@@ -232,6 +241,23 @@ endpoint, or client function anywhere in this codebase.
 6. Verify the security property: as a signed-in non-admin, attempt
    `insert into public.admin_user_ids (user_id) values (auth.uid());`. Expect
    `ERROR: new row violates row-level security policy`. That error is the guarantee.
+
+### Hackathon demo accounts
+
+Create two separate accounts using **Create account** after the email-confirmation switch
+above is disabled: one ordinary Demo User and one Demo Admin. Use demo-controlled email
+addresses and credentials chosen by the event organiser; never commit passwords, put them
+in `VITE_*` variables, or publish them in the demo UI. Password recovery requires a
+deliverable email address.
+
+Optionally set `VITE_DEMO_USER_EMAIL` and `VITE_DEMO_ADMIN_EMAIL` to the respective
+addresses. These public build-time values only add clearly labelled sign-in buttons that
+prefill the email field; visitors must still enter the privately distributed password.
+They do not grant or suggest roles. Only grant the Demo Admin user's UUID using the
+SQL-Editor procedure above (also documented in `supabase/migrations/0003_admin_setup.sql`).
+Do not add the Demo User to `admin_user_ids`. The Admin page is `/#/admin`; a signed-in
+non-admin sees access denied, and Supabase RLS remains the authority for every write.
+No demo accounts were provisioned or live-tested in this workspace.
 
 To revoke, delete the row. To delete an account entirely, delete the user in
 **Authentication → Users**; private data is removed by cascade. The app deliberately holds
@@ -283,8 +309,10 @@ performed or verified from this environment.**
 10. **Verify `/api/assistant`** by sending one chat message and confirming a real answer
     rather than the "not configured" message.
 11. **Verify authentication and database permissions.** Add the production
-    `/auth/callback` and `/auth/reset` URLs to Supabase's redirect list (step 5 of the Supabase section),
-    then sign up, confirm, sign in, save a home, reload, and confirm it is still there.
+    `/auth/callback` and `/auth/reset` URLs to Supabase's redirect list (step 5 of the
+    Supabase section), disable **Confirm email** as directed, then create both demo
+    accounts, grant only the Demo Admin UUID, and test each role. Save a home, reload, and
+    confirm it is still there.
 
 Optional CLI alternative to steps 3–8:
 
@@ -312,7 +340,7 @@ npm run cf:deploy
 ## Testing
 
 ```bash
-npm test          # 384 tests in the latest verified run
+npm test          # 385 tests in the latest verified run
 npm run typecheck # tsc -b
 npm run build     # typecheck + production build
 ```
@@ -330,7 +358,7 @@ UI tests run under `happy-dom` via a per-file `@vitest-environment happy-dom` do
 
 **Verified in this environment:**
 
-- the full test suite (384 tests) and the production build;
+- the full test suite (385 tests) and the production build;
 - the `/api/assistant` endpoint locally, including a **real Gemini reply** with the
   project's own key, and a live check that replies come back in English, Bahasa Melayu and
   Simplified Chinese;

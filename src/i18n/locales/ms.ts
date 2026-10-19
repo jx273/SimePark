@@ -57,6 +57,8 @@ const ms = {
     menu: 'Menu',
     openMenu: 'Buka menu navigasi',
     closeMenu: 'Tutup menu navigasi',
+    collapseSidebar: 'Kecilkan bar sisi',
+    expandSidebar: 'Besarkan bar sisi',
   },
   controls: {
     language: 'Bahasa',
@@ -301,6 +303,7 @@ const ms = {
     confidence: 'Keyakinan data',
     facilities: 'Kemudahan',
     nearbyAmenities: 'Kemudahan berhampiran (dilaporkan)',
+    reportedDistance: 'Jarak yang dilaporkan',
     nearestTransit: 'Transit terdekat',
     routeTypeUnknown: 'jarak laluan dilaporkan; jenis laluan tidak dinyatakan',
     imagePermission: 'Kebenaran penggunaan imej',
@@ -471,6 +474,18 @@ const ms = {
     backToSignIn: 'Kembali ke daftar masuk',
     or: 'atau',
     continueAsGuest: 'Teruskan tanpa akaun',
+    demoAccountTitle: 'Akaun demo hackathon',
+    demoUser: 'Gunakan Pengguna Demo',
+    demoAdmin: 'Gunakan Pentadbir Demo',
+    demoAccountHelp:
+      'Pilih e-mel akaun, kemudian masukkan kata laluan yang diberikan secara peribadi oleh penganjur demo. Kata laluan tidak dipaparkan di sini.',
+    callbackTitle: 'Keputusan pautan e-mel',
+    callbackProgress: 'Menyemak pautan e-mel…',
+    callbackSuccess: 'Pautan e-mel diterima. Anda telah log masuk.',
+    callbackFailed:
+      'Pautan e-mel ini tidak dapat memulakan sesi. Pautan mungkin tamat tempoh atau URL ubah hala belum dibenarkan dalam Supabase.',
+    callbackContinue: 'Teruskan ke SimePark',
+    callbackSignIn: 'Pergi ke daftar masuk',
     confirmEmailTitle: 'Pengesahan e-mel menyekat daftar masuk',
     confirmEmailText:
       'Pengesahan e-mel dihidupkan untuk projek Supabase ini, jadi anda belum boleh log masuk. Untuk prototaip ini, buka Supabase Dashboard → Authentication → Sign In / Providers → Email dan matikan Confirm email, kemudian daftar semula. SMTP tersuai tidak diperlukan.',

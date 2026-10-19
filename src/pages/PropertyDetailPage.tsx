@@ -312,7 +312,11 @@ export default function PropertyDetailPage({
                 {rawProperty.amenities?.map((amenity) => (
                   <li key={amenity.name}>
                     {amenity.name}
-                    {amenity.distanceKm != null ? ` — ${amenity.distanceKm} km (${t('detail.routeTypeUnknown')})` : ''}
+                    {amenity.distanceKm != null && (
+                      <span className="detail__reported-distance">
+                        {t('detail.reportedDistance')}: {amenity.distanceKm} km
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>
