@@ -169,7 +169,7 @@ describe('logProviderDiagnostics', () => {
         status: 'INVALID_ARGUMENT',
         reason: 'API_KEY_INVALID',
         message: 'API key not valid',
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.5-flash',
       },
       logger
     );
@@ -181,7 +181,7 @@ describe('logProviderDiagnostics', () => {
     expect(line).toContain('provider_status=INVALID_ARGUMENT');
     expect(line).toContain('provider_reason=API_KEY_INVALID');
     expect(line).toContain('provider_message="API key not valid"');
-    expect(line).toContain('model=gemini-2.5-flash');
+    expect(line).toContain('model=gemini-3.5-flash');
   });
 
   it('renders absent fields as n/a', () => {
@@ -209,7 +209,7 @@ describe('logProviderDiagnostics', () => {
         status: 'INVALID_ARGUMENT',
         reason: 'API_KEY_INVALID',
         message: 'bad request',
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.5-flash',
       },
       logger
     );

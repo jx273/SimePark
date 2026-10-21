@@ -522,7 +522,7 @@ describe('callGemini', () => {
 
     const outcome = await callGemini(
       validated,
-      { apiKey: secret, model: 'gemini-2.5-flash' },
+      { apiKey: secret, model: 'gemini-3.5-flash' },
       { fetchImpl: fetchImpl as unknown as typeof fetch, logger }
     );
 
@@ -537,7 +537,7 @@ describe('callGemini', () => {
     expect(line).toContain('provider_code=400');
     expect(line).toContain('provider_status=INVALID_ARGUMENT');
     expect(line).toContain('API key not valid');
-    expect(line).toContain('model=gemini-2.5-flash');
+    expect(line).toContain('model=gemini-3.5-flash');
   });
 
   it("parses the array-wrapped body Google actually returns, and names the key", async () => {
@@ -597,7 +597,7 @@ describe('callGemini', () => {
 
     await callGemini(
       validated,
-      { apiKey: secret, model: 'gemini-2.5-flash' },
+      { apiKey: secret, model: 'gemini-3.5-flash' },
       { fetchImpl: fetchImpl as unknown as typeof fetch, logger }
     );
 
@@ -639,7 +639,7 @@ describe('callGemini', () => {
 
     const outcome = await callGemini(
       validated,
-      { apiKey: 'k', model: 'gemini-2.5-flash' },
+      { apiKey: 'k', model: 'gemini-3.5-flash' },
       { fetchImpl: fetchImpl as unknown as typeof fetch, logger }
     );
 
@@ -859,7 +859,7 @@ describe('handleAssistantRequest — HTTP contract', () => {
 
     const response = await handleAssistantRequest(makeRequest({ message: 'hi' }), {
       apiKey: secret,
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.5-flash',
       fetchImpl: fetchImpl as unknown as typeof fetch,
       logger,
     });
@@ -875,6 +875,6 @@ describe('handleAssistantRequest — HTTP contract', () => {
     // Terminal: the diagnosis.
     const line = logger.warn.mock.calls[0][0] as string;
     expect(line).toContain('provider_status=INVALID_ARGUMENT');
-    expect(line).toContain('model=gemini-2.5-flash');
+    expect(line).toContain('model=gemini-3.5-flash');
   });
 });
