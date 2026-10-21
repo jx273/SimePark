@@ -495,7 +495,7 @@ const en = {
     signInSubtitle: 'Save homes, comparisons and scenarios, and keep them across devices.',
     savePromptTitle: 'Sign in to save properties',
     savePromptText: 'Sign in or create an account to save your favorite homes, track budget scenarios, and access your shortlist across devices.',
-    adminLoginNotice: 'Authorized Evaluators: Sign in with the administrator credentials supplied separately by the project team to access the dedicated Admin Workspace.',
+    adminLoginNotice: 'An admin account is provided for access and test the SimePark Admin Dashboard purpose. \n    Admin email: ipta166.404@gmail.com\n    Admin password: 12345678',
     signUpTitle: 'Create your SimePark account',
     signUpSubtitle: 'Saving is optional — the calculator and property list stay open to everyone.',
     email: 'Email',
