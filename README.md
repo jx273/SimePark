@@ -31,12 +31,12 @@ homes, comparison, and multilingual support.
 | --- | --- |
 | Affordability | Estimates a maximum property price as the **lower** of two ceilings: what the monthly repayment budget can service, and what available cash supports at a 10% down payment. Both are always shown, and the binding one is named. |
 | Debt service ratio | Illustrative 40%-of-gross-income cap, minus existing commitments. A product assumption, not a bank rule. |
-| Scenario simulator | Adjust extra cash, a target price, income, commitments, tenure and interest rate. Recalculated deterministically; never by the AI. |
+| Scenario simulator | Starts from the submitted affordability inputs, including cash, income, commitments, rate, tenure, preferred payment, location and bedrooms. Scenario values stay editable and can be resynchronized by submitting updated main-form inputs; recalculation is deterministic and never done by the AI. |
 | Property explorer | Independent search with location, type, price, minimum bedrooms, facilities and affordability filters; switches between list and coordinate-backed map view. |
 | Budget status | **Within budget**, **Over monthly budget**, or **Insufficient down-payment cash** — a cash shortfall is never mislabelled as "too expensive". |
 | Provenance labels | **Example listing**, **Source provided**, **Verified on [date]**. "Verified" appears only when the record carries a genuine verification date. |
 | Accounts (optional) | Saved homes, up to three-way comparison, saved budget scenarios, preferences, activity, account settings, password reset. |
-| Admin | Create, edit, publish/unpublish and remove property records, with missing-field review. Authorisation is enforced by the database. |
+| Admin | A separate Admin workspace for property editing, catalogue status, media metadata/uploads, and own-profile display-name controls. Public media requires confirmed permission and visibility; authorization is enforced by database and Storage policies. |
 | Languages | English, Bahasa Melayu, Simplified Chinese. Persisted, and the AI assistant replies in the selected language. |
 | Voice input | Optional browser speech recognition for English and Bahasa Melayu. |
 | Themes | Light, dark, and follow-system. Persisted, with the OS preference respected on a first visit. |
@@ -85,8 +85,13 @@ Key decisions:
   with no server configuration.
 - **Supabase is the production catalogue.** When configured, published property and media
   records are read from Supabase; database errors are shown rather than masked by stale
-  local records. The bundled four-property source fixture is used only when Supabase is not
-  configured for local development.
+  local records. The bundled 30-property source fixture is used only when Supabase is not
+  configured for local development. Properties with no recorded price remain browseable but
+  are excluded from affordability calculations.
+- **Media is private until reviewed.** External media URLs are stored as metadata, not copied
+  into Storage. The gallery displays media only when both usage permission is confirmed and
+  visibility is Public. Unknown/restricted items stay hidden; the original listing URL is
+  tracked separately from each direct media URL.
 - **Supabase is lazy-loaded.** The client is ~228 kB and is imported dynamically, so a
   guest browsing properties never downloads it.
 
@@ -175,17 +180,21 @@ was created.
     rows and decide separately how to retain or remove them; do not weaken the guard to
     force the migration through.
 3. **Apply only pending migrations** from `supabase/migrations/`. For a fresh project, run
-   `0001_core_schema.sql`, `0002_seed_demo_properties.sql`, then
-   `0004_property_catalogue.sql` and `0005_prototype_public_media.sql`. File
+   `0001_core_schema.sql`, `0002_seed_demo_properties.sql`, then migrations
+   `0004_property_catalogue.sql`, `0005_prototype_public_media.sql`, and
+   `0006_catalogue_media_controls.sql` in order. File
    `0003_admin_setup.sql` is a commented provisioning
    template, not an executable migration. For an existing project, do not blindly rerun
-   already-applied files: check migration history and apply `0004_property_catalogue.sql`
-   and `0005_prototype_public_media.sql` if they are pending. `0002_seed_demo_properties.sql`
+   already-applied files: check migration history and apply each pending migration in order.
+   `0002_seed_demo_properties.sql`
    is a no-op and cannot re-seed demo properties. `0004` adds the metadata/media schema,
-   safely removes known legacy rows, and imports SP-001–SP-004. Its `ON CONFLICT DO NOTHING`
-   import cannot overwrite later Admin edits and does not run at app startup. `0005` allows
-   public gallery metadata reads for published properties even when image permission is
-   unknown; it is for prototype display only and is not a grant of redistribution rights.
+   safely removes known legacy rows, and imports its initial catalogue. `0006` imports the
+   full SP-001–SP-030 dataset, adds video and media provenance/visibility fields, and replaces
+   `0005`'s prototype public-read policy with explicit Public visibility and confirmed/granted
+   permission checks for both media rows and uploaded Storage objects. The catalogue import
+   preserves edited property rows and does not run at app startup. External media URLs are
+   never copied to Storage by the migration. All supplied media starts internal-only with
+   permission unknown; an Admin must independently confirm rights before making it public.
 4. **Get the API keys.** Project Settings → **API keys**. Copy the **publishable** key
    (older projects label it "anon"). Put it in `VITE_SUPABASE_PUBLISHABLE_KEY`, and the
    project URL in `VITE_SUPABASE_URL`, in `.env`.
@@ -214,13 +223,17 @@ was created.
    the emailed link. It returns to `/#/auth/reset`, where the user sets a new password.
 8. **Grant the first administrator** — see below.
 
-The supplied photographs and floor plans are shown in the prototype gallery, with
-attribution and the original `unknown` permission status preserved. This display is not a
-claim of redistribution permission. Files under `public/media/` are directly fetchable if
-deployed, regardless of database policies. Confirm you have permission to publish them
-before a public deployment; otherwise remove them from `public/`. Review the Admin
-permission status before publishing future uploads. Admin uploads are stored in the
-private `property-media` bucket.
+Supplied photo, floor-plan, and video URLs are retained as external-media metadata and are
+not fetched or copied during migration. Because their permission status is `unknown`, the
+gallery hides them until an authorized Admin confirms the intended use and sets visibility
+to Public. Listing source URLs and direct media URLs are separate fields. Admin-uploaded
+files are stored in the private `property-media` bucket; uploads require confirmed usage
+permission and default to internal visibility. Watermark status is metadata only; this app
+does not modify source files.
+
+The source coordinates in the catalogue are retained as supplied and checked for valid
+latitude/longitude ranges before map markers are rendered. Coordinate range checks do not
+independently verify the source location; imported precision remains `unknown`.
 
 ### Granting the first administrator safely
 
@@ -340,7 +353,7 @@ npm run cf:deploy
 ## Testing
 
 ```bash
-npm test          # 385 tests in the latest verified run
+npm test          # 388 tests in the latest verified run
 npm run typecheck # tsc -b
 npm run build     # typecheck + production build
 ```
@@ -358,7 +371,7 @@ UI tests run under `happy-dom` via a per-file `@vitest-environment happy-dom` do
 
 **Verified in this environment:**
 
-- the full test suite (385 tests) and the production build;
+- the full test suite (388 tests) and the production build;
 - the `/api/assistant` endpoint locally, including a **real Gemini reply** with the
   project's own key, and a live check that replies come back in English, Bahasa Melayu and
   Simplified Chinese;
@@ -369,11 +382,11 @@ UI tests run under `happy-dom` via a per-file `@vitest-environment happy-dom` do
 **Not verified:**
 
 - **any deployment**, Cloudflare or otherwise;
-- the real Supabase integration end to end. The database was inspected read-only and
-  exposed 15 published legacy demo IDs; no database write or migration was executed.
-  Signup, profile creation, email delivery, authorized Admin CRUD, and media upload remain
-  untested against a live authorized project. An authorized operator must review and apply
-  `0004_property_catalogue.sql` before the production catalogue contains only SP-001–SP-004;
+- the real Supabase integration end to end. No database migration was executed from this
+  workspace. Signup, profile persistence, authorized Admin CRUD, Storage upload, and RLS
+  behavior remain untested against a live authorized project. An authorized operator must
+  review and apply pending migrations through `0006_catalogue_media_controls.sql` before the
+  live catalogue and media schema match the app;
 - email confirmation and password-reset delivery, which need a configured project and a
   mailbox;
 - `npm run cf:preview`, which needs `wrangler login`;
@@ -428,13 +441,19 @@ src/
 
 ## Known limitations
 
-- The four supplied records retain source-based listing details, but their availability is
-  unknown, their coordinates are missing, and image redistribution permission is unknown.
-  Those states are preserved. Source listing URLs do not grant image redistribution rights.
-- The supplied photographs and floor plans are displayed in the prototype with their
-  permission status still marked `unknown`. **The files in `public/media/` are directly
-  fetchable as static assets if deployed, regardless of database gallery policy.** Confirm
-  redistribution rights before public deployment or remove these files from `public/`.
+- The 30 supplied records retain source-based listing details. Availability and media
+  redistribution permissions remain unknown unless explicitly confirmed. SP-003 has no
+  coordinates, and two records have no price; both remain browseable. Source listing URLs do
+  not grant image redistribution rights.
+- Supplied photo, floor-plan, and video URLs are retained as external metadata but remain
+  hidden until both usage permission and Public visibility are confirmed. Check the deployed
+  Storage bucket configuration and RLS policies after applying migrations; these controls
+  have not been tested against a connected Supabase project.
+- Twenty legacy image files from the earlier catalogue are retained in
+  `private/media-review/`, outside Vite's static asset directory, and are not served by the
+  app. Their permission is unknown; do not restore them to `public/` or publish them without
+  confirming rights. Existing 0004 metadata paths to those files are legacy records and stay
+  internal after 0006.
 - Only the down payment and the mortgage repayment are modelled. Stamp duty, legal fees,
   valuation fees, insurance and maintenance are excluded from every calculation. The
   assistant describes those categories in general terms without quoting specific rates,

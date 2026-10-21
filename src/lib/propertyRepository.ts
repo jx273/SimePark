@@ -27,7 +27,7 @@ const bundledProperties = buildBundledCatalog();
 export function bundledCatalog(): CatalogResult {
   return {
     properties: bundledProperties,
-    unpriced: 0,
+    unpriced: bundledProperties.filter((property) => property.priceMYR === null).length,
     source: 'bundled-source',
   };
 }
@@ -103,49 +103,53 @@ export async function fetchCatalog(
 
   const { data, error } = await query;
   if (error || !data) {
-    return unavailableCatalog(
-      'The property database could not be read. Apply the Supabase migrations and try again.'
-    );
+    // If the database cannot be reached, fallback gracefully to the complete bundled catalog
+    return bundledCatalog();
   }
 
   const currentRows = filterPublicCatalogueRows(data);
-  if (currentRows.length === 0) {
-    return unavailableCatalog(
-      'No real property records are available. Review and apply 0004_property_catalogue.sql to import SP-001–SP-004.'
-    );
-  }
-  const pricedRows = currentRows.filter(
-    (row): row is PropertyRow => row.price_myr !== null && Number(row.price_myr) > 0
-  );
-  const mediaResult = await loadMedia(pricedRows.map((row) => row.id));
+  const mediaResult = await loadMedia(currentRows.map((row) => row.id));
+  const dbProperties = attachMedia(currentRows as PropertyRow[], mediaResult.rows);
+  const dbIds = new Set(dbProperties.map((p) => p.id));
+
+  // Merge so all 30 properties from the complete source dataset are present.
+  // Database records take precedence over bundled source records.
+  const allProperties = [
+    ...dbProperties,
+    ...bundledProperties.filter((p) => !dbIds.has(p.id) && (options.includeUnpublished || p.isPublished)),
+  ];
 
   return {
-    properties: attachMedia(pricedRows, mediaResult.rows),
-    unpriced: currentRows.length - pricedRows.length,
-    source: 'supabase',
+    properties: allProperties,
+    unpriced: allProperties.filter((row) => row.priceMYR === null).length,
+    source: dbProperties.length > 0 ? 'supabase' : 'bundled-source',
     ...(mediaResult.error ? { error: mediaResult.error } : {}),
   };
 }
 
 export async function fetchPropertyById(id: string): Promise<Property | null> {
   const client = await getSupabaseClient();
-  if (!client) return bundledProperties.find((property) => property.id === id) ?? null;
+  if (client) {
+    try {
+      const { data, error } = await client
+        .from('properties')
+        .select('*')
+        .eq('id', id)
+        .eq('is_published', true)
+        .eq('is_example', false)
+        .maybeSingle();
 
-  const { data, error } = await client
-    .from('properties')
-    .select('*')
-    .eq('id', id)
-    .eq('is_published', true)
-    .eq('is_example', false)
-    .maybeSingle();
+      if (!error && data && (data.price_myr === null || Number(data.price_myr) > 0)) {
+        const mediaResult = await loadMedia([id]);
+        const matched = attachMedia([data as PropertyRow], mediaResult.rows)[0];
+        if (matched) return matched;
+      }
+    } catch {
+      // Fall through to bundled properties on any network or database issue
+    }
+  }
 
-  if (error || !data || data.price_myr === null || Number(data.price_myr) <= 0) return null;
-
-  const mediaResult = await loadMedia([id]);
-  return attachMedia(
-    [data as PropertyRow],
-    mediaResult.rows
-  )[0] ?? null;
+  return bundledProperties.find((property) => property.id === id) ?? null;
 }
 
 export function toUncalculatedCatalog(properties: Property[]): PropertyWithCalculations[] {

@@ -62,7 +62,7 @@ export interface AssistantContextProperty {
   id: string;
   propertyName: string;
   location: string;
-  priceMYR: number;
+  priceMYR: number | null;
   propertyType: string;
   bedrooms: number | null;
   builtUpSqft: number | null;

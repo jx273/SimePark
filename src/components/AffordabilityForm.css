@@ -40,9 +40,22 @@
   gap: var(--space-lg);
 }
 
-.af-form__submit {
-  width: 100%;
+.af-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
   margin-top: var(--space-md);
+}
+
+.af-form__submit {
+  flex: 1 1 15rem;
+}
+
+.af-form__disclaimer {
+  margin-top: var(--space-lg);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-relaxed);
 }
 
 @media (max-width: 768px) {

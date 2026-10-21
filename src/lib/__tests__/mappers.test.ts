@@ -77,10 +77,8 @@ describe('rowToProperty', () => {
     expect(property!.isExample).toBe(true);
   });
 
-  // An unpriced record cannot support any affordability maths, so it is excluded
-  // rather than being given a placeholder price.
-  it('returns null when the price is missing', () => {
-    expect(rowToProperty(row({ price_myr: null }))).toBeNull();
+  it('preserves a property without a price for browsing', () => {
+    expect(rowToProperty(row({ price_myr: null }))?.priceMYR).toBeNull();
   });
 
   it('returns null when the price is zero or negative', () => {
@@ -122,7 +120,7 @@ describe('toCatalog', () => {
       row({ id: 'c', price_myr: 500000 }),
     ]);
 
-    expect(result.properties.map((p) => p.id)).toEqual(['a', 'c']);
+    expect(result.properties.map((p) => p.id)).toEqual(['a', 'b', 'c']);
     expect(result.unpriced).toBe(1);
   });
 
@@ -291,7 +289,7 @@ describe('admin form mapping', () => {
 });
 
 describe('localDatasetToCatalog', () => {
-  it('drops records without a usable price and counts them', () => {
+  it('keeps records without a price and counts them', () => {
     const result = localDatasetToCatalog([
       {
         id: 'a',
@@ -321,7 +319,7 @@ describe('localDatasetToCatalog', () => {
       },
     ]);
 
-    expect(result.properties).toHaveLength(1);
+    expect(result.properties).toHaveLength(2);
     expect(result.unpriced).toBe(1);
   });
 });

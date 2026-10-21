@@ -248,7 +248,8 @@ export function sanitizeProperty(value: unknown): AssistantContextProperty | nul
   const id = readText(value.id, 64);
   const propertyName = readText(value.propertyName);
   const location = readText(value.location);
-  const priceMYR = readNumber(value.priceMYR, { min: 0 });
+  const priceMYR =
+    value.priceMYR === null ? null : readNumber(value.priceMYR, { min: 0 });
   const propertyType = readText(value.propertyType, 64);
   const estimatedMonthlyMortgage = readNumber(value.estimatedMonthlyMortgage, { min: 0 });
   const requiredDownPayment = readNumber(value.requiredDownPayment, { min: 0 });

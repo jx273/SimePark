@@ -3,12 +3,13 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthProvider';
 import { useSelection } from '../state/SelectionProvider';
 import { recordActivity } from '../lib/userRepository';
-import { formatMYR, formatPercentage } from '../utils/mortgage';
+import { formatMYR, formatPercentage, calculateMonthlyMortgage } from '../utils/mortgage';
 import { ILLUSTRATIVE_DSR_CAP } from '../types/affordability';
 import { navigate } from '../router/router';
 import BudgetBadge, { ProvenanceBadge } from '../components/BudgetBadge';
 import type { Property, PropertyWithCalculations } from '../types/property';
 import type { AffordabilityInputs, AffordabilityResult } from '../types/affordability';
+import { isPubliclyDisplayableMedia, isSafeMediaUrl } from '../lib/propertyAdapter';
 import AssistantChat from '../components/AssistantChat';
 import './PropertyDetailPage.css';
 
@@ -40,6 +41,9 @@ export default function PropertyDetailPage({
   const { isSaved, isCompared, toggleSaved, toggleCompared, comparisonFull } = useSelection();
   const [activityLogged, setActivityLogged] = useState(false);
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
+  const [activePhotoIndex, setActivePhotoIndex] = useState(0);
+  const [failedMedia, setFailedMedia] = useState<Set<string>>(() => new Set());
+  const [loadedMedia, setLoadedMedia] = useState<Set<string>>(() => new Set());
 
   // Record a genuine view once, and only for a signed-in user, so the dashboard
   // activity list reflects real usage rather than page loads by guests.
@@ -101,6 +105,72 @@ export default function PropertyDetailPage({
     },
     { label: t('detail.location'), value: rawProperty.location },
   ];
+  const publicMedia = (rawProperty.media ?? [])
+    .filter(isPubliclyDisplayableMedia)
+    .sort((a, b) => Number(b.isCover) - Number(a.isCover) || a.sortOrder - b.sortOrder);
+  const photos = publicMedia.filter((item) => item.kind === 'photo');
+  const floorplans = publicMedia.filter((item) => item.kind === 'floorplan');
+  const videos = publicMedia.filter((item) => item.kind === 'video');
+  const hasUnapprovedPhotos = (rawProperty.media ?? []).some(
+    (item) => item.kind === 'photo' && !isPubliclyDisplayableMedia(item)
+  );
+  const activePhoto = photos[activePhotoIndex] ?? null;
+
+  useEffect(() => {
+    setActivePhotoIndex(0);
+    setFailedMedia(new Set());
+    setLoadedMedia(new Set());
+  }, [propertyId]);
+
+  const stepPhoto = (offset: number) => {
+    if (photos.length < 2) return;
+    setActivePhotoIndex((current) => (current + offset + photos.length) % photos.length);
+  };
+  const renderFacts = (entries: Array<[string, string | null]>) => (
+    <dl className="detail__facts">
+      {entries.filter(([, value]) => value !== null).map(([label, value]) => (
+        <div className="detail__fact" key={label}>
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+  const facilityIcon = (facility: string) => {
+    const label = facility.toLowerCase();
+    if (label.includes('pool')) return '◉';
+    if (label.includes('gym') || label.includes('fitness')) return '◇';
+    if (label.includes('security') || label.includes('guard')) return '▣';
+    if (label.includes('park') || label.includes('playground')) return '♧';
+    if (label.includes('court') || label.includes('sport')) return '⌁';
+    return '•';
+  };
+
+  const getAmenityCategory = (name: string): { icon: string; category: string } => {
+    const lower = name.toLowerCase();
+    if (lower.match(/sk |smk|sjk|school|primary|secondary|sekolah|college|kolej|universiti|university|institut|kindergarten|kumon|brainy/)) {
+      return { icon: '🏫', category: 'Education' };
+    }
+    if (lower.match(/hospital|clinic|klinik|medical|doctors|pantai|ksmc/)) {
+      return { icon: '🏥', category: 'Healthcare' };
+    }
+    if (lower.match(/mall|megamall|plaza|pavilion|suria|citta|paradigm|fahrenheit|lot 10|gurney/)) {
+      return { icon: '🛍️', category: 'Shopping' };
+    }
+    if (lower.match(/mart|tesco|lotus|aeon|giant|market|grocer|pasar/)) {
+      return { icon: '🛒', category: 'Grocery' };
+    }
+    if (lower.match(/park|taman|eco park|forest|lake|tasik|reserve|golf|club/)) {
+      return { icon: '🌳', category: 'Parks & Nature' };
+    }
+    if (lower.match(/lrt|mrt|ktm|station|stesen|ciq|causeway|terminal/)) {
+      return { icon: '🚉', category: 'Transit' };
+    }
+    if (lower.match(/dining|restaurant|food|cafe|makan/)) {
+      return { icon: '🍽️', category: 'Dining' };
+    }
+    return { icon: '📍', category: 'Amenity' };
+  };
 
   return (
     <div className="container detail" key={propertyId}>
@@ -133,54 +203,173 @@ export default function PropertyDetailPage({
 
         <p className="detail__price">
           {rawProperty.priceBasis ? `${rawProperty.priceBasis}: ` : ''}
-          {formatMYR(rawProperty.priceMYR)}
+          {rawProperty.priceMYR === null ? t('common.unknown') : formatMYR(rawProperty.priceMYR)}
         </p>
 
-        {(rawProperty.media?.length ?? 0) > 0 && (
-          <section className="detail__section" aria-label={t('detail.gallery')}>
-            <div className="detail__gallery">
-              {(rawProperty.media ?? [])
-                .filter((item) => item.kind === 'photo')
-                .sort((a, b) => Number(b.isCover) - Number(a.isCover) || a.sortOrder - b.sortOrder)
-                .map((item) => (
-                  <figure className="detail__media" key={item.id}>
-                    <button
-                      type="button"
-                      className="detail__media-button"
-                      onClick={() => setExpandedImage(item.url)}
-                      aria-label={t('detail.enlargeImage')}
-                    >
-                      <img src={item.url} alt={item.altText ?? item.caption ?? rawProperty.propertyName} loading="lazy" />
+        <section className="detail__section" aria-label={t('detail.gallery')}>
+          <h2 className="detail__section-title">{t('detail.gallery')}</h2>
+          <div
+            className="detail__gallery-viewer"
+            role="group"
+            aria-label={t('detail.gallery')}
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowLeft') stepPhoto(-1);
+              if (event.key === 'ArrowRight') stepPhoto(1);
+            }}
+          >
+            {activePhoto && !failedMedia.has(activePhoto.id) ? (
+              <figure className="detail__hero-media">
+                {!loadedMedia.has(activePhoto.id) && (
+                  <span className="detail__media-loading" role="status">{t('detail.loadingMedia')}</span>
+                )}
+                <button
+                  type="button"
+                  className="detail__media-button"
+                  onClick={() => setExpandedImage(activePhoto.externalUrl ?? activePhoto.url)}
+                  aria-label={t('detail.enlargeImage')}
+                >
+                  <img
+                    src={activePhoto.externalUrl ?? activePhoto.url}
+                    alt={activePhoto.altText ?? activePhoto.caption ?? rawProperty.propertyName}
+                    onLoad={() => setLoadedMedia((current) => new Set(current).add(activePhoto.id))}
+                    onError={() => setFailedMedia((current) => new Set(current).add(activePhoto.id))}
+                  />
+                </button>
+                {isSafeMediaUrl(rawProperty.sourceUrl) && (
+                  <a
+                    className="detail__image-source"
+                    href={rawProperty.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {t('detail.viewSource')} ↗
+                  </a>
+                )}
+                <figcaption>{activePhoto.caption}</figcaption>
+                {photos.length > 1 && (
+                  <div className="detail__gallery-controls">
+                    <button type="button" className="btn btn--secondary btn--sm" onClick={() => stepPhoto(-1)}>
+                      {t('detail.previousImage')}
                     </button>
-                    <figcaption>
-                      {item.caption}
-                      {item.attribution && (
-                        <span className="detail__attribution">{t('detail.imageAttribution', { source: item.attribution })}</span>
-                      )}
-                    </figcaption>
-                  </figure>
-                ))}
-            </div>
-            {(rawProperty.media ?? []).some((item) => item.kind === 'floorplan') && (
-              <div className="detail__floorplans">
-                <h3>{t('detail.floorplans')}</h3>
-                {(rawProperty.media ?? [])
-                  .filter((item) => item.kind === 'floorplan')
-                  .map((item) => (
-                    <figure className="detail__media" key={item.id}>
-                      <a href={item.url} target="_blank" rel="noopener noreferrer">
-                        <img src={item.url} alt={item.altText ?? item.caption ?? t('detail.floorplan')} loading="lazy" />
-                      </a>
-                      <figcaption>
-                        {item.caption}
-                        {item.attribution && (
-                          <span className="detail__attribution">{t('detail.imageAttribution', { source: item.attribution })}</span>
-                        )}
-                      </figcaption>
-                    </figure>
-                  ))}
+                    <span aria-live="polite">{activePhotoIndex + 1} / {photos.length}</span>
+                    <button type="button" className="btn btn--secondary btn--sm" onClick={() => stepPhoto(1)}>
+                      {t('detail.nextImage')}
+                    </button>
+                  </div>
+                )}
+              </figure>
+            ) : (
+              <div className="detail__media-placeholder" role="status">
+                <span className="detail__placeholder-icon" aria-hidden="true">⌂</span>
+                <strong>{t(failedMedia.size > 0 ? 'detail.mediaUnavailable' : 'detail.noPublicMedia')}</strong>
+                {hasUnapprovedPhotos && <span>{t('detail.mediaPermissionPending')}</span>}
               </div>
             )}
+          </div>
+          {photos.length > 1 && (
+            <div className="detail__thumbnails" aria-label={t('detail.galleryThumbnails')}>
+              {photos.map((item, index) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`detail__thumbnail${index === activePhotoIndex ? ' is-active' : ''}`}
+                  aria-label={t('detail.selectImage', { index: index + 1 })}
+                  aria-pressed={index === activePhotoIndex}
+                  onClick={() => setActivePhotoIndex(index)}
+                >
+                  <img src={item.externalUrl ?? item.url} alt="" loading="lazy" />
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {floorplans.length > 0 && (
+          <section className="detail__section">
+            <h2 className="detail__section-title">{t('detail.floorplans')}</h2>
+            <div className="detail__floorplans">
+              {floorplans.map((item) => (
+                <figure className="detail__media" key={item.id}>
+                  {failedMedia.has(item.id) ? (
+                    <p className="detail__media-placeholder" role="status">{t('detail.mediaUnavailable')}</p>
+                  ) : (
+                    <>
+                      {!loadedMedia.has(item.id) && (
+                        <span className="detail__media-loading" role="status">{t('detail.loadingMedia')}</span>
+                      )}
+                      <a href={item.externalUrl ?? item.url} target="_blank" rel="noopener noreferrer">
+                        <img
+                          src={item.externalUrl ?? item.url}
+                          alt={item.altText ?? item.caption ?? t('detail.floorplan')}
+                          loading="lazy"
+                          onLoad={() => setLoadedMedia((current) => new Set(current).add(item.id))}
+                          onError={() => setFailedMedia((current) => new Set(current).add(item.id))}
+                        />
+                      </a>
+                    </>
+                  )}
+                  <figcaption>{item.caption ?? t('detail.floorplan')}</figcaption>
+                </figure>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {videos.length > 0 && (
+          <section className="detail__section">
+            <h2 className="detail__section-title">{t('detail.videos')}</h2>
+            <div className="detail__videos">
+              {videos.map((item) => {
+                const url = item.externalUrl ?? item.url;
+                const isDirectVideo = /\.(mp4|webm|ogg)(?:[?#]|$)/i.test(url);
+                const ytMatch = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))([A-Za-z0-9_-]+)/);
+
+                if (ytMatch && ytMatch[1]) {
+                  const embedUrl = `https://www.youtube-nocookie.com/embed/${ytMatch[1]}`;
+                  return (
+                    <div key={item.id} className="detail__video-wrapper">
+                      <iframe
+                        src={embedUrl}
+                        title={item.caption ?? `${rawProperty.propertyName} video`}
+                        className="detail__video-iframe"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                      />
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="detail__video-external-link"
+                      >
+                        ↗ {t('detail.openVideoSource')}
+                      </a>
+                    </div>
+                  );
+                }
+
+                return isDirectVideo ? (
+                  failedMedia.has(item.id) ? (
+                    <p key={item.id} role="status">{t('detail.videoUnavailable')}</p>
+                  ) : (
+                    <video
+                      key={item.id}
+                      src={url}
+                      controls
+                      preload="metadata"
+                      className="detail__video-player"
+                      onError={() => setFailedMedia((current) => new Set(current).add(item.id))}
+                    >
+                      {t('detail.videoUnavailable')}
+                    </video>
+                  )
+                ) : (
+                  <a key={item.id} href={url} target="_blank" rel="noopener noreferrer" className="btn btn--outline btn--sm">
+                    ↗ {t('detail.openVideoSource')}
+                  </a>
+                );
+              })}
+            </div>
           </section>
         )}
 
@@ -206,6 +395,11 @@ export default function PropertyDetailPage({
             {compared ? t('card.uncompare') : t('card.compare')}
           </button>
         </div>
+        {!compared && comparisonFull && (
+          <p className="detail__compare-limit" role="status">
+            {t('card.compareFull', { max: 3 })}
+          </p>
+        )}
 
         <section className="detail__section">
           <h2 className="detail__section-title">{t('detail.whyTitle')}</h2>
@@ -272,101 +466,156 @@ export default function PropertyDetailPage({
         ) : (
           <section className="detail__section">
             <h2 className="detail__section-title">{t('detail.affordabilityTitle')}</h2>
-            <p className="detail__explanation">{t('detail.noAffordability')}</p>
+            <div className="stat-grid">
+              <div className="stat-card">
+                <p className="stat-card__label">{t('detail.requiredDownPayment')}</p>
+                <p className="stat-card__value">
+                  {rawProperty.priceMYR !== null ? formatMYR(rawProperty.priceMYR * 0.1) : 'RM —'}
+                </p>
+                <p className="stat-card__note">10% standard planning assumption</p>
+              </div>
+              <div className="stat-card">
+                <p className="stat-card__label">{t('card.estMonthly')}</p>
+                <p className="stat-card__value">
+                  {rawProperty.priceMYR !== null
+                    ? formatMYR(calculateMonthlyMortgage(rawProperty.priceMYR * 0.9, 4.2, 30))
+                    : 'RM —'}
+                </p>
+                <p className="stat-card__note">30 yrs @ 4.2% indicative baseline</p>
+              </div>
+              <div className="stat-card">
+                <p className="stat-card__label">{t('detail.loanPrincipal')}</p>
+                <p className="stat-card__value">
+                  {rawProperty.priceMYR !== null ? formatMYR(rawProperty.priceMYR * 0.9) : 'RM —'}
+                </p>
+                <p className="stat-card__note">90% financing baseline</p>
+              </div>
+            </div>
+            <div className="detail__uncalculated-cta surface">
+              <div>
+                <p className="detail__uncalculated-title">{t('explorer.promptTitle')}</p>
+                <p className="detail__uncalculated-text">{t('detail.noAffordability')}</p>
+              </div>
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => navigate({ name: 'home' })}
+              >
+                {t('hero.primaryCta')}
+              </button>
+            </div>
           </section>
         )}
 
         <section className="detail__section">
-          <h2 className="detail__section-title">{t('detail.moreFacts')}</h2>
-          <dl className="detail__facts">
-            {[
-              [t('explorer.propertyType'), rawProperty.propertyType],
-              [t('detail.priceBasis'), rawProperty.priceBasis],
+          <h2 className="detail__section-title">{t('detail.priceOwnership')}</h2>
+          {renderFacts([
+              [t('detail.priceBasis'), rawProperty.priceBasis ?? null],
+              [t('detail.priceRange'), rawProperty.priceMinMYR !== null && rawProperty.priceMinMYR !== undefined
+                ? `${formatMYR(rawProperty.priceMinMYR)}${rawProperty.priceMaxMYR != null ? ` – ${formatMYR(rawProperty.priceMaxMYR)}` : ''}`
+                : rawProperty.priceMaxMYR != null ? formatMYR(rawProperty.priceMaxMYR) : null],
+              [t('detail.tenure'), rawProperty.tenure ?? null],
               [t('detail.landArea'), rawProperty.landArea == null ? null : `${rawProperty.landArea.toLocaleString()} ${rawProperty.landAreaUnit ?? ''}`.trim()],
-              [t('detail.tenure'), rawProperty.tenure],
-              [t('detail.completionDate'), rawProperty.completionDate],
-              [t('detail.furnishing'), rawProperty.furnishingStatus],
-              [t('detail.parkingBays'), rawProperty.parkingBays == null ? null : String(rawProperty.parkingBays)],
-              [t('detail.maintenance'), rawProperty.monthlyMaintenanceMYR == null ? null : formatMYR(rawProperty.monthlyMaintenanceMYR)],
-              [t('detail.sinkingFund'), rawProperty.sinkingFundMYR == null ? null : formatMYR(rawProperty.sinkingFundMYR)],
-              [t('detail.availability'), rawProperty.availabilityStatus === 'unknown' ? t('detail.availabilityUnknown') : rawProperty.availabilityStatus],
-              [t('detail.availabilityCheckedDate'), rawProperty.availabilityCheckedDate],
-              [t('detail.confidence'), rawProperty.confidenceStatus],
-            ].filter(([, value]) => value !== null && value !== undefined).map(([label, value]) => (
-              <div className="detail__fact" key={String(label)}>
-                <dt>{label}</dt>
-                <dd>{value}</dd>
-              </div>
-            ))}
-          </dl>
-          {(rawProperty.facilities?.length ?? 0) > 0 && (
-            <div>
-              <h3>{t('detail.facilities')}</h3>
-              <ul>{rawProperty.facilities?.map((facility) => <li key={facility}>{facility}</li>)}</ul>
-            </div>
-          )}
-          {(rawProperty.amenities?.length ?? 0) > 0 && (
-            <div>
-              <h3>{t('detail.nearbyAmenities')}</h3>
-              <ul>
-                {rawProperty.amenities?.map((amenity) => (
-                  <li key={amenity.name}>
-                    {amenity.name}
-                    {amenity.distanceKm != null && (
-                      <span className="detail__reported-distance">
-                        {t('detail.reportedDistance')}: {amenity.distanceKm} km
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {rawProperty.nearestTransit && (
-            <p>
-              <strong>{t('detail.nearestTransit')}:</strong> {rawProperty.nearestTransit}
-              {rawProperty.transitDistanceKm != null && ` — ${rawProperty.transitDistanceKm} km`}
-              {rawProperty.transitTravelTimeMin != null && `, ${rawProperty.transitTravelTimeMin} min`}
-              {(rawProperty.transitDistanceKm != null || rawProperty.transitTravelTimeMin != null) &&
-                ` (${rawProperty.transitMode ?? t('detail.routeTypeUnknown')})`}
-            </p>
-          )}
-          <p><strong>{t('detail.imagePermission')}:</strong> {rawProperty.imagePermission ?? t('common.unknown')}</p>
-          {rawProperty.notes && <p className="detail__source-notes">{rawProperty.notes}</p>}
+              [t('detail.completionDate'), rawProperty.completionDate ?? null],
+          ])}
         </section>
 
         <section className="detail__section">
-          <h2 className="detail__section-title">{t('detail.provenanceTitle')}</h2>
-          <dl className="detail__facts">
-            <div className="detail__fact">
-              <dt>{t('detail.verifiedDate')}</dt>
-              <dd className={rawProperty.verifiedDate ? undefined : 'detail__fact--unknown'}>
-                {rawProperty.verifiedDate ?? t('status.notVerified')}
-              </dd>
-            </div>
-            <div className="detail__fact">
-              <dt>{t('detail.sourceAccessed')}</dt>
-              <dd>{rawProperty.dateAccessed ?? t('common.unknown')}</dd>
-            </div>
-            <div className="detail__fact">
-              <dt>{t('detail.source')}</dt>
-              <dd>{rawProperty.sourceName ?? rawProperty.sourceType ?? t('common.unknown')}</dd>
-            </div>
-          </dl>
+          <h2 className="detail__section-title">{t('detail.availabilityAndFurnishing')}</h2>
+          {renderFacts([
+              [t('detail.availability'), rawProperty.availabilityStatus === 'unknown' ? t('detail.availabilityUnknown') : rawProperty.availabilityStatus ?? null],
+              [t('detail.availabilityCheckedDate'), rawProperty.availabilityCheckedDate ?? null],
+              [t('detail.furnishing'), rawProperty.furnishingStatus ?? null],
+              [t('detail.parkingBays'), rawProperty.parkingBays == null ? null : String(rawProperty.parkingBays)],
+          ])}
+        </section>
 
-          {rawProperty.sourceUrl ? (
-            <a
-              className="btn btn--secondary"
-              href={rawProperty.sourceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {t('detail.viewSource')} ↗
-            </a>
-          ) : (
-            <p className="detail__no-source">{t('detail.noSource')}</p>
+        <section className="detail__section">
+          <h2 className="detail__section-title">{t('detail.maintenanceCosts')}</h2>
+          {renderFacts([
+              [t('detail.maintenance'), rawProperty.monthlyMaintenanceMYR == null ? null : formatMYR(rawProperty.monthlyMaintenanceMYR)],
+              [t('detail.sinkingFund'), rawProperty.sinkingFundMYR == null ? null : formatMYR(rawProperty.sinkingFundMYR)],
+          ])}
+        </section>
+
+        {rawProperty.nearestTransit && (
+          <section className="detail__section">
+              <h2 className="detail__section-title"><span aria-hidden="true">🚉 </span>{t('detail.nearbyTransport')}</h2>
+              <p><strong>{rawProperty.nearestTransit}</strong></p>
+              <p className="detail__explanation">
+                {rawProperty.transitDistanceKm != null && `${t('detail.reportedDistance')}: ${rawProperty.transitDistanceKm} km`}
+                {rawProperty.transitDistanceKm != null && rawProperty.transitTravelTimeMin != null && ' · '}
+                {rawProperty.transitTravelTimeMin != null && `${t('detail.reportedTravelTime')}: ${rawProperty.transitTravelTimeMin} min`}
+                {(rawProperty.transitDistanceKm != null || rawProperty.transitTravelTimeMin != null) &&
+                  ` · ${rawProperty.transitMode ?? t('detail.routeTypeUnknown')}`}
+              </p>
+          </section>
+        )}
+
+        {(rawProperty.amenities?.length ?? 0) > 0 && (
+          <section className="detail__section">
+            <h2 className="detail__section-title"><span aria-hidden="true">📍 </span>{t('detail.nearbyAmenities')}</h2>
+            <p className="detail__amenity-disclaimer">ℹ️ {t('detail.nearbyAmenitiesNote')}</p>
+            <div className="detail__amenity-grid">
+              {rawProperty.amenities?.map((amenity, index) => {
+                const cat = getAmenityCategory(amenity.name);
+                return (
+                  <div className="detail__amenity-card" key={`${amenity.name}-${index}`}>
+                    <span className="detail__amenity-icon" aria-hidden="true">{cat.icon}</span>
+                    <div className="detail__amenity-body">
+                      <span className="detail__amenity-name">{amenity.name}</span>
+                      {amenity.distanceKm != null ? (
+                        <span className="detail__amenity-distance-badge">
+                          {t('detail.reportedDistance')}: {amenity.distanceKm} km
+                        </span>
+                      ) : (
+                        <span className="detail__amenity-distance-badge detail__amenity-distance-badge--general">
+                          {t('detail.routeTypeUnknown')}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {(rawProperty.facilities?.length ?? 0) > 0 && (
+          <section className="detail__section">
+              <h2 className="detail__section-title">{t('detail.facilities')}</h2>
+              <ul className="detail__facility-grid">
+                {rawProperty.facilities?.map((facility) => (
+                  <li className="detail__facility-chip" key={facility}>
+                    <span aria-hidden="true">{facilityIcon(facility)}</span>{facility}
+                  </li>
+                ))}
+              </ul>
+          </section>
+        )}
+
+        <section className="detail__section">
+          <h2 className="detail__section-title">{t('detail.provenanceTitle')}</h2>
+          {renderFacts([
+              [t('detail.confidence'), rawProperty.confidenceStatus ?? null],
+              [t('detail.verifiedDate'), rawProperty.verifiedDate ?? t('status.notVerified')],
+              [t('detail.sourceAccessed'), rawProperty.dateAccessed ?? null],
+              [t('detail.source'), rawProperty.sourceName ?? rawProperty.sourceType ?? null],
+          ])}
+          <p><strong>{t('detail.imagePermission')}:</strong> {rawProperty.imagePermission ?? t('common.unknown')}</p>
+          {rawProperty.sourceUrl && isSafeMediaUrl(rawProperty.sourceUrl) && (
+              <a className="btn btn--secondary" href={rawProperty.sourceUrl} target="_blank" rel="noopener noreferrer">
+                {t('detail.viewSource')} ↗
+              </a>
           )}
         </section>
+
+        {rawProperty.notes && (
+          <details className="detail__section detail__notes">
+              <summary className="detail__section-title">{t('detail.additionalNotes')}</summary>
+              <p className="detail__source-notes">{rawProperty.notes}</p>
+          </details>
+        )}
 
         <div className="disclaimer">
           <p className="disclaimer__title">⚠️ {t('results.disclaimerTitle')}</p>

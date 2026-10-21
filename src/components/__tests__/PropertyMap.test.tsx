@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
 import type { i18n as I18nInstance } from 'i18next';
-import PropertyMap, { hasVerifiedCoordinates } from '../PropertyMap';
+import PropertyMap, { hasUsableCoordinates } from '../PropertyMap';
 import { createTestI18n } from '../../test/testI18n';
 
 let i18n: I18nInstance;
@@ -26,33 +26,34 @@ describe('PropertyMap', () => {
 
     expect(
       screen.getByText(
-        'No properties have reliable coordinates yet. Browse all results in List view.'
+        'No properties match the current filters. Adjust the filters to see map markers.'
       )
     ).toBeTruthy();
     expect(document.querySelector('.property-map')).toBeNull();
   });
 
-  it('accepts only in-range, explicitly verified coordinates for markers', () => {
+  it('accepts only complete, finite, in-range coordinate pairs for markers', () => {
     expect(
-      hasVerifiedCoordinates({
+      hasUsableCoordinates({
         latitude: 3.139,
         longitude: 101.6869,
-        locationPrecision: 'verified',
       })
     ).toBe(true);
     expect(
-      hasVerifiedCoordinates({
+      hasUsableCoordinates({
         latitude: 3.139,
         longitude: 101.6869,
-        locationPrecision: 'approximate',
       })
-    ).toBe(false);
+    ).toBe(true);
     expect(
-      hasVerifiedCoordinates({
+      hasUsableCoordinates({
         latitude: 91,
         longitude: 101.6869,
-        locationPrecision: 'verified',
       })
     ).toBe(false);
+    expect(hasUsableCoordinates({ latitude: 3.139, longitude: null })).toBe(false);
+    expect(hasUsableCoordinates({ latitude: Number.NaN, longitude: 101.6869 })).toBe(false);
+    expect(hasUsableCoordinates({ latitude: 3.139, longitude: Number.POSITIVE_INFINITY })).toBe(false);
+    expect(hasUsableCoordinates({ latitude: -90, longitude: 180 })).toBe(true);
   });
 });

@@ -83,6 +83,9 @@ export function enrichPropertiesWithCalculations(
 
   return properties.map((property) => {
     const price = property.priceMYR;
+    if (price === null) {
+      return toUncalculatedProperties([property])[0];
+    }
 
     // Down payment required by the 10% planning assumption for this price.
     const requiredDownPayment = price * (REQUIRED_DOWN_PAYMENT_PERCENTAGE / 100);
@@ -125,6 +128,7 @@ export function enrichPropertiesWithCalculations(
 
     const matchScore = calculateMatchScore(
       property,
+      price,
       safeInputs,
       result,
       estimatedMonthlyMortgage,
@@ -171,6 +175,7 @@ export function enrichPropertiesWithCalculations(
  */
 function calculateMatchScore(
   property: Property,
+  price: number,
   inputs: AffordabilityInputs,
   result: AffordabilityResult,
   estimatedMonthlyMortgage: number,
@@ -225,7 +230,7 @@ function calculateMatchScore(
   }
 
   // Down payment feasibility (15 points)
-  const requiredDP = property.priceMYR * (REQUIRED_DOWN_PAYMENT_PERCENTAGE / 100);
+  const requiredDP = price * (REQUIRED_DOWN_PAYMENT_PERCENTAGE / 100);
   if (inputs.downPayment >= requiredDP) {
     score += 15;
   } else if (inputs.downPayment >= requiredDP * 0.5) {
@@ -318,6 +323,7 @@ function generateMatchExplanation(
 /* ------------------------------------------------------------------ */
 
 export interface PropertyFilters {
+  search: string;
   /** Free-text location query; matched against location and the recorded address */
   location: string;
   propertyType: string;
@@ -335,6 +341,7 @@ export interface PropertyFilters {
 export type SortOption = 'match' | 'price-asc' | 'price-desc' | 'mortgage-asc';
 
 export const DEFAULT_FILTERS: PropertyFilters = {
+  search: '',
   location: '',
   propertyType: 'All',
   minBedrooms: 0,
@@ -463,10 +470,21 @@ export function filterPropertiesWithMeta(
   const minBedrooms = filters.minBedrooms > 0 ? filters.minBedrooms : 0;
   const maxBedrooms = filters.maxBedrooms > 0 ? filters.maxBedrooms : 0;
   const locationQuery = filters.location.trim();
+  const searchQuery = filters.search.trim().toLocaleLowerCase();
 
   let hiddenUnknownBedrooms = 0;
 
   const filtered = properties.filter((property) => {
+    if (searchQuery) {
+      const searchable = [
+        property.propertyName,
+        property.location,
+        property.address,
+        property.propertyType,
+      ].filter(Boolean).join(' ').toLocaleLowerCase();
+      if (!searchable.includes(searchQuery)) return false;
+    }
+
     // Location: free text, matched against area and the recorded project address.
     if (locationQuery && locationQuery.toLowerCase() !== 'all') {
       const haystack = `${property.location} ${property.address ?? ''}`.toLowerCase();
@@ -496,8 +514,8 @@ export function filterPropertiesWithMeta(
       }
     }
 
-    if (filters.minPrice > 0 && property.priceMYR < filters.minPrice) return false;
-    if (filters.maxPrice > 0 && property.priceMYR > filters.maxPrice) return false;
+    if (filters.minPrice > 0 && (property.priceMYR === null || property.priceMYR < filters.minPrice)) return false;
+    if (filters.maxPrice > 0 && (property.priceMYR === null || property.priceMYR > filters.maxPrice)) return false;
 
     if (filters.facilities.length > 0) {
       const hasAll = filters.facilities.every((facility) => hasFacility(property, facility));
@@ -536,30 +554,59 @@ export function sortProperties(
   sortBy: SortOption
 ): PropertyWithCalculations[] {
   const sorted = [...properties];
+  const comparePrice = (a: PropertyWithCalculations, b: PropertyWithCalculations) => {
+    if (a.priceMYR === null && b.priceMYR === null) return a.propertyName.localeCompare(b.propertyName);
+    if (a.priceMYR === null) return 1;
+    if (b.priceMYR === null) return -1;
+    return a.priceMYR - b.priceMYR;
+  };
+  const comparePriceDescending = (a: PropertyWithCalculations, b: PropertyWithCalculations) => {
+    if (a.priceMYR === null && b.priceMYR === null) return a.propertyName.localeCompare(b.propertyName);
+    if (a.priceMYR === null) return 1;
+    if (b.priceMYR === null) return -1;
+    return b.priceMYR - a.priceMYR;
+  };
 
   switch (sortBy) {
     case 'match':
-      sorted.sort((a, b) => b.matchScore - a.matchScore || a.priceMYR - b.priceMYR);
+      sorted.sort((a, b) =>
+        budgetStatusRank(a.budgetStatus) - budgetStatusRank(b.budgetStatus) ||
+        b.matchScore - a.matchScore ||
+        comparePrice(a, b)
+      );
       break;
     case 'price-asc':
-      sorted.sort((a, b) => a.priceMYR - b.priceMYR);
+      sorted.sort(comparePrice);
       break;
     case 'price-desc':
-      sorted.sort((a, b) => b.priceMYR - a.priceMYR);
+      sorted.sort(comparePriceDescending);
       break;
     case 'mortgage-asc':
       sorted.sort((a, b) => {
         const left = a.estimatedMonthlyMortgage;
         const right = b.estimatedMonthlyMortgage;
-        if (left === null && right === null) return a.priceMYR - b.priceMYR;
+        if (left === null && right === null) return comparePrice(a, b);
         if (left === null) return 1;
         if (right === null) return -1;
         return left - right;
       });
       break;
     default:
-      sorted.sort((a, b) => b.matchScore - a.matchScore || a.priceMYR - b.priceMYR);
+      sorted.sort((a, b) =>
+        budgetStatusRank(a.budgetStatus) - budgetStatusRank(b.budgetStatus) ||
+        b.matchScore - a.matchScore ||
+        comparePrice(a, b)
+      );
   }
 
   return sorted;
+}
+
+function budgetStatusRank(status: PropertyWithCalculations['budgetStatus']): number {
+  switch (status) {
+    case 'affordable': return 0;
+    case 'insufficientDownPayment': return 1;
+    case 'overMonthlyBudget': return 2;
+    case 'uncalculated': return 3;
+  }
 }

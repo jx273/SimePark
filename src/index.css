@@ -1,3 +1,5 @@
+@import 'leaflet/dist/leaflet.css';
+
 /* ============================================================
    SimePark — Global Styles
    Design: premium Malaysian real-estate brand meets modern fintech.
@@ -936,5 +938,56 @@ input, select {
     right: var(--space-md);
     bottom: var(--space-md);
     max-width: none;
+  }
+}
+
+/* Sign-in prompt modal for guest favorites */
+.auth-prompt-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-md);
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(4px);
+  animation: fadeIn var(--transition-fast) ease-out;
+}
+
+.auth-prompt-modal {
+  width: 100%;
+  max-width: 28rem;
+  padding: var(--space-xl);
+  border-radius: var(--border-radius-lg);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+  text-align: center;
+}
+
+.auth-prompt-modal__title {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--font-size-xl);
+  color: var(--color-text);
+}
+
+.auth-prompt-modal__text {
+  margin: 0 0 var(--space-xl);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.auth-prompt-modal__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+@media (min-width: 480px) {
+  .auth-prompt-modal__actions {
+    flex-direction: row;
+    justify-content: center;
   }
 }

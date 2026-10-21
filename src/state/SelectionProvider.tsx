@@ -19,10 +19,13 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthProvider';
+import { navigate } from '../router/router';
 import {
   listSavedPropertyIds,
   saveProperty,
@@ -46,6 +49,10 @@ function readStored(key: string): string[] {
   } catch {
     return [];
   }
+}
+
+function readComparison(): string[] {
+  return [...new Set(readStored(COMPARE_KEY))].slice(0, MAX_COMPARISON);
 }
 
 function writeStored(key: string, ids: string[]): void {
@@ -73,16 +80,38 @@ export interface SelectionContextValue {
 export const SelectionContext = createContext<SelectionContextValue | null>(null);
 
 export function SelectionProvider({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   const { user, isConfigured } = useAuth();
   const [savedIds, setSavedIds] = useState<string[]>([]);
-  const [comparisonIds, setComparisonIds] = useState<string[]>(() => readStored(COMPARE_KEY));
-  const [localSaved, setLocalSaved] = useState<string[]>(() => readStored(SAVED_KEY));
+  const [comparisonIds, setComparisonIds] = useState<string[]>(readComparison);
+  const comparisonIdsRef = useRef(comparisonIds);
+  const [authPromptPropertyId, setAuthPromptPropertyId] = useState<string | null>(null);
 
   // Signed-in: the account list is authoritative.
   useEffect(() => {
-    if (!user || !isConfigured) return;
+    if (!user || !isConfigured) {
+      setSavedIds([]);
+      return;
+    }
 
     let active = true;
+
+    // Save any pending property from when the user was prompted to sign in
+    try {
+      const intended = sessionStorage.getItem('simepark_favorite_intended');
+      if (intended) {
+        sessionStorage.removeItem('simepark_favorite_intended');
+        void saveProperty(user.id, intended).then(() => {
+          if (!active) return;
+          void listSavedPropertyIds(user.id).then(({ data }) => {
+            if (active && data) setSavedIds(data);
+          });
+        });
+      }
+    } catch {
+      // Session storage access error ignored
+    }
+
     void listSavedPropertyIds(user.id).then(({ data }) => {
       if (!active || !data) return;
       setSavedIds(data);
@@ -93,87 +122,54 @@ export function SelectionProvider({ children }: { children: ReactNode }) {
     };
   }, [user, isConfigured]);
 
-  // Signed-out: fall back to the browser list.
-  useEffect(() => {
-    if (user && isConfigured) return;
-    setSavedIds(localSaved);
-  }, [user, isConfigured, localSaved]);
-
-  // On sign-in, merge anything saved locally into the account, once.
-  useEffect(() => {
-    if (!user || !isConfigured || localSaved.length === 0) return;
-
-    let active = true;
-
-    void (async () => {
-      for (const propertyId of localSaved) {
-        await saveProperty(user.id, propertyId);
-      }
-      const { data } = await listSavedPropertyIds(user.id);
-      if (!active) return;
-      if (data) setSavedIds(data);
-      // Clear the local list only after a successful merge, so nothing is lost.
-      setLocalSaved([]);
-      writeStored(SAVED_KEY, []);
-    })();
-
-    return () => {
-      active = false;
-    };
-  }, [user, isConfigured, localSaved]);
-
   const toggleSaved = useCallback(
     async (propertyId: string) => {
-      const currentlySaved = savedIds.includes(propertyId);
-
-      if (user && isConfigured) {
-        // Optimistic update, reverted if the write fails.
-        setSavedIds((previous) =>
-          currentlySaved
-            ? previous.filter((id) => id !== propertyId)
-            : [propertyId, ...previous]
-        );
-
-        const result = currentlySaved
-          ? await unsaveProperty(user.id, propertyId)
-          : await saveProperty(user.id, propertyId);
-
-        if (result.error) {
-          setSavedIds((previous) =>
-            currentlySaved
-              ? [propertyId, ...previous]
-              : previous.filter((id) => id !== propertyId)
-          );
-        }
+      // Guests cannot silently save favorites; prompt to sign in or register
+      if (!user || !isConfigured) {
+        setAuthPromptPropertyId(propertyId);
         return;
       }
 
-      // Guest: browser-local only.
-      setLocalSaved((previous) => {
-        const next = currentlySaved
+      const currentlySaved = savedIds.includes(propertyId);
+
+      // Optimistic update, reverted if the write fails.
+      setSavedIds((previous) =>
+        currentlySaved
           ? previous.filter((id) => id !== propertyId)
-          : [propertyId, ...previous];
-        writeStored(SAVED_KEY, next);
-        return next;
-      });
+          : [propertyId, ...previous]
+      );
+
+      const result = currentlySaved
+        ? await unsaveProperty(user.id, propertyId)
+        : await saveProperty(user.id, propertyId);
+
+      if (result.error) {
+        setSavedIds((previous) =>
+          currentlySaved
+            ? [propertyId, ...previous]
+            : previous.filter((id) => id !== propertyId)
+        );
+      }
     },
     [savedIds, user, isConfigured]
   );
 
   const toggleCompared = useCallback(
     async (propertyId: string) => {
-      const currentlyCompared = comparisonIds.includes(propertyId);
+      const current = comparisonIdsRef.current;
+      const currentlyCompared = current.includes(propertyId);
 
-      if (!currentlyCompared && comparisonIds.length >= MAX_COMPARISON) {
+      if (!currentlyCompared && current.length >= MAX_COMPARISON) {
         // Refuse rather than silently dropping the oldest: the user should
         // decide what leaves the comparison.
         return;
       }
 
       const next = currentlyCompared
-        ? comparisonIds.filter((id) => id !== propertyId)
-        : [...comparisonIds, propertyId];
+        ? current.filter((id) => id !== propertyId)
+        : [...current, propertyId];
 
+      comparisonIdsRef.current = next;
       setComparisonIds(next);
       writeStored(COMPARE_KEY, next);
 
@@ -186,6 +182,7 @@ export function SelectionProvider({ children }: { children: ReactNode }) {
   );
 
   const clearComparison = useCallback(() => {
+    comparisonIdsRef.current = [];
     setComparisonIds([]);
     writeStored(COMPARE_KEY, []);
   }, []);
@@ -205,7 +202,70 @@ export function SelectionProvider({ children }: { children: ReactNode }) {
     [savedIds, comparisonIds, toggleSaved, toggleCompared, clearComparison, user, isConfigured]
   );
 
-  return <SelectionContext.Provider value={value}>{children}</SelectionContext.Provider>;
+  return (
+    <SelectionContext.Provider value={value}>
+      {children}
+      {authPromptPropertyId && (
+        <div
+          className="auth-prompt-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="auth-prompt-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setAuthPromptPropertyId(null);
+          }}
+        >
+          <div className="auth-prompt-modal surface">
+            <h3 id="auth-prompt-title" className="auth-prompt-modal__title">
+              ♡ {t('auth.savePromptTitle')}
+            </h3>
+            <p className="auth-prompt-modal__text">
+              {t('auth.savePromptText')}
+            </p>
+            <div className="auth-prompt-modal__actions">
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => {
+                  try {
+                    sessionStorage.setItem('simepark_favorite_intended', authPromptPropertyId);
+                  } catch {
+                    // Ignore storage errors
+                  }
+                  setAuthPromptPropertyId(null);
+                  navigate({ name: 'auth', mode: 'signin' });
+                }}
+              >
+                {t('nav.signIn')}
+              </button>
+              <button
+                type="button"
+                className="btn btn--secondary"
+                onClick={() => {
+                  try {
+                    sessionStorage.setItem('simepark_favorite_intended', authPromptPropertyId);
+                  } catch {
+                    // Ignore storage errors
+                  }
+                  setAuthPromptPropertyId(null);
+                  navigate({ name: 'auth', mode: 'signup' });
+                }}
+              >
+                {t('nav.signUp')}
+              </button>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => setAuthPromptPropertyId(null)}
+              >
+                {t('common.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </SelectionContext.Provider>
+  );
 }
 
 export function useSelection(): SelectionContextValue {

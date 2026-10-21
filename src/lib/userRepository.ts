@@ -171,6 +171,42 @@ export async function upsertPreferences(
   return { data: true, error: null };
 }
 
+export async function getDisplayName(userId: string): Promise<RepositoryResult<string | null>> {
+  const supabase = await client();
+  if (!supabase) return { data: null, error: NOT_CONFIGURED };
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('display_name')
+    .eq('id', userId)
+    .maybeSingle();
+  if (error) return { data: null, error: GENERIC_ERROR };
+  return { data: data?.display_name ?? null, error: null };
+}
+
+export async function updateDisplayName(
+  userId: string,
+  displayName: string
+): Promise<RepositoryResult<string | null>> {
+  const supabase = await client();
+  if (!supabase) return { data: null, error: NOT_CONFIGURED };
+
+  const normalized = displayName.trim();
+  if (normalized.length > 80) {
+    return { data: null, error: 'Display name must be 80 characters or fewer.' };
+  }
+
+  const value = normalized || null;
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({ display_name: value })
+    .eq('id', userId)
+    .select('id')
+    .maybeSingle();
+  if (error || !data) return { data: null, error: GENERIC_ERROR };
+  return { data: value, error: null };
+}
+
 /* ------------------------------------------------------------------ */
 /* Comparison history                                                 */
 /* ------------------------------------------------------------------ */

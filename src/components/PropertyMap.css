@@ -1,6 +1,8 @@
 .property-map {
-  min-height: 24rem;
-  height: min(58vh, 38rem);
+  width: 100%;
+  min-height: 28rem;
+  height: clamp(26rem, 60vh, 42rem);
+  position: relative;
   overflow: hidden;
   border-radius: var(--border-radius);
   background: var(--color-bg-section);
@@ -9,11 +11,13 @@
 
 .property-map__unavailable {
   display: grid;
-  min-height: 14rem;
+  min-height: 18rem;
   place-items: center;
   padding: var(--space-xl);
   text-align: center;
   color: var(--color-text-secondary);
+  background: var(--color-bg-section);
+  border-radius: var(--border-radius);
 }
 
 .property-map__note,
@@ -23,19 +27,57 @@
   color: var(--color-text-muted);
 }
 
-.leaflet-popup-content p {
-  margin: var(--space-xs) 0 var(--space-sm);
+/* Custom Popup preview card */
+.property-map__popup {
+  padding: var(--space-xs) 0;
+  min-width: 13rem;
+  max-width: 18rem;
 }
 
-.leaflet-popup-content button {
-  color: var(--color-primary);
-  text-decoration: underline;
-  cursor: pointer;
+.property-map__popup-title {
+  margin: 0 0 var(--space-xs);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text);
+  line-height: var(--line-height-tight);
+}
+
+.property-map__popup-price {
+  margin: 0 0 var(--space-xs);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-bold);
+  color: var(--brand-red);
+}
+
+.property-map__popup-location {
+  margin: 0 0 var(--space-xs);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.property-map__popup-meta {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.property-map__popup-actions {
+  display: flex;
+  gap: var(--space-xs);
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: var(--space-xs);
+}
+
+.property-map__popup-actions .btn {
+  text-decoration: none;
+  font-size: var(--font-size-xs);
+  padding: var(--space-xs) var(--space-sm);
 }
 
 @media (max-width: 640px) {
   .property-map {
-    min-height: 20rem;
-    height: 48vh;
+    min-height: 22rem;
+    height: 52vh;
   }
 }

@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { filterPublicCatalogueRows, keepLoadedMedia } from '../propertyRepository';
+import { bundledCatalog, filterPublicCatalogueRows, keepLoadedMedia } from '../propertyRepository';
+
+describe('bundledCatalog', () => {
+  it('reports all supplied records and counts the unknown prices', () => {
+    const catalog = bundledCatalog();
+    expect(catalog.properties).toHaveLength(30);
+    expect(catalog.unpriced).toBe(2);
+  });
+});
 
 describe('filterPublicCatalogueRows', () => {
   it('excludes demonstration rows and retains non-example property rows', () => {

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { PropertyWithCalculations } from '../types/property';
 import { formatMYR } from '../utils/mortgage';
 import { MAX_COMPARISON } from '../state/SelectionProvider';
+import { isPubliclyDisplayableMedia } from '../lib/propertyAdapter';
 import './CompareTray.css';
 
 interface CompareTrayProps {
@@ -109,7 +110,9 @@ export default function CompareTray({ properties, onRemove, onClear }: CompareTr
     {
       label: t('detail.gallery'),
       render: (p) => {
-        const photos = (p.media ?? []).filter((item) => item.kind === 'photo');
+        const photos = (p.media ?? []).filter(
+          (item) => item.kind === 'photo' && isPubliclyDisplayableMedia(item)
+        );
         return photos.length > 0 ? (
           <div className="compare__media">
             {photos.map((photo) => (
@@ -136,7 +139,9 @@ export default function CompareTray({ properties, onRemove, onClear }: CompareTr
     {
       label: t('detail.floorplans'),
       render: (p) => {
-        const plans = (p.media ?? []).filter((item) => item.kind === 'floorplan');
+        const plans = (p.media ?? []).filter(
+          (item) => item.kind === 'floorplan' && isPubliclyDisplayableMedia(item)
+        );
         return plans.length > 0 ? (
           <div className="compare__media">
             {plans.map((plan) => (

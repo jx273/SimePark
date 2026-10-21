@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PropertyWithCalculations } from '../types/property';
 import { AffordabilityInputs } from '../types/affordability';
@@ -54,13 +54,33 @@ export default function PropertyExplorer({
   );
   const [sortBy, setSortBy] = useState<SortOption>('match');
   const [view, setView] = useState<'list' | 'map'>('list');
+  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [page, setPage] = useState(1);
+  const pageSize = 9;
+  const facilityDetailsRef = useRef<HTMLDetailsElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        facilityDetailsRef.current &&
+        facilityDetailsRef.current.open &&
+        !facilityDetailsRef.current.contains(event.target as Node)
+      ) {
+        facilityDetailsRef.current.open = false;
+      }
+    };
+    document.addEventListener('pointerdown', handleClickOutside);
+    return () => {
+      document.removeEventListener('pointerdown', handleClickOutside);
+    };
+  }, []);
 
   useEffect(() => {
     setFilters((current) => ({
       ...current,
       location: preferences
         ? preferences.preferredLocation?.trim() || ''
-        : current.location,
+        : '',
       minBedrooms: preferences?.minBedrooms ? Math.floor(preferences.minBedrooms) : 0,
     }));
   }, [preferences?.preferredLocation, preferences?.minBedrooms]);
@@ -95,8 +115,19 @@ export default function PropertyExplorer({
   );
 
   const filtered = sortProperties(matching, sortBy);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const visibleProperties = filtered.slice((page - 1) * pageSize, page * pageSize);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filters, sortBy]);
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, pageCount));
+  }, [pageCount]);
 
   const hasActiveFilters =
+    filters.search !== DEFAULT_FILTERS.search ||
     filters.location !== DEFAULT_FILTERS.location ||
     filters.propertyType !== DEFAULT_FILTERS.propertyType ||
     filters.minBedrooms !== DEFAULT_FILTERS.minBedrooms ||
@@ -129,7 +160,30 @@ export default function PropertyExplorer({
           </div>
         )}
 
-        <div className="explorer__filters surface">
+        <button
+          type="button"
+          className="btn btn--secondary explorer__filter-toggle"
+          aria-expanded={filtersOpen}
+          aria-controls="property-filters"
+          onClick={() => setFiltersOpen((open) => !open)}
+        >
+          {filtersOpen ? t('explorer.hideFilters') : t('explorer.showFilters')}
+        </button>
+
+        {filtersOpen && <div className="explorer__filters surface" id="property-filters">
+          <div className="explorer__filter">
+            <label className="form-label" htmlFor="filter-search">
+              {t('explorer.search')}
+            </label>
+            <input
+              id="filter-search"
+              className="form-input"
+              type="search"
+              value={filters.search}
+              onChange={(event) => change('search', event.target.value)}
+            />
+          </div>
+
           <div className="explorer__filter">
             <label className="form-label" htmlFor="filter-sort">
               {t('explorer.sortBy')}
@@ -271,28 +325,82 @@ export default function PropertyExplorer({
           </div>
 
           {facilities.length > 0 && (
-            <fieldset className="explorer__facility-filter">
-              <legend className="form-label">{t('explorer.facilities')}</legend>
-              <div className="explorer__facility-list">
-                {facilities.map((facility) => (
-                  <label className="explorer__checkbox-label" key={facility}>
-                    <input
-                      type="checkbox"
-                      checked={filters.facilities.includes(facility)}
-                      onChange={(event) =>
-                        setFilters((current) => ({
-                          ...current,
-                          facilities: event.target.checked
-                            ? [...current.facilities, facility]
-                            : current.facilities.filter((item) => item !== facility),
-                        }))
+            <details
+              ref={facilityDetailsRef}
+              className="explorer__facility-filter"
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') event.currentTarget.open = false;
+              }}
+            >
+              <summary className="explorer__facility-trigger">
+                <span className="explorer__facility-trigger-text">
+                  <strong>{t('explorer.facilities')}</strong>
+                  <span className="explorer__facility-trigger-count">
+                    {filters.facilities.length > 0
+                      ? `(${filters.facilities.length} selected)`
+                      : '(Select all and apply)'}
+                  </span>
+                </span>
+                <span className="explorer__facility-chevron" aria-hidden="true">▾</span>
+              </summary>
+              <div className="explorer__facility-panel">
+                <div className="explorer__facility-toolbar">
+                  <div className="explorer__facility-toolbar-actions">
+                    <button
+                      type="button"
+                      className="btn btn--secondary btn--sm"
+                      onClick={() => setFilters((current) => ({ ...current, facilities: [...facilities] }))}
+                    >
+                      ✓ Select All
+                    </button>
+                    {filters.facilities.length > 0 && (
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        onClick={() => setFilters((current) => ({ ...current, facilities: [] }))}
+                      >
+                        ✕ {t('explorer.clearFacilities')}
+                      </button>
+                    )}
+                  </div>
+                  <span className="explorer__facility-count-badge">
+                    {filters.facilities.length} of {facilities.length} selected
+                  </span>
+                </div>
+                <div className="explorer__facility-list" role="group" aria-label={t('explorer.facilities')}>
+                  {facilities.map((facility) => (
+                    <label className="explorer__checkbox-label" key={facility}>
+                      <input
+                        type="checkbox"
+                        checked={filters.facilities.includes(facility)}
+                        onChange={(event) =>
+                          setFilters((current) => ({
+                            ...current,
+                            facilities: event.target.checked
+                              ? [...current.facilities, facility]
+                              : current.facilities.filter((item) => item !== facility),
+                          }))
+                        }
+                      />
+                      <span>{facility}</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="explorer__facility-footer">
+                  <button
+                    type="button"
+                    className="btn btn--primary btn--sm"
+                    onClick={() => {
+                      if (facilityDetailsRef.current) {
+                        facilityDetailsRef.current.open = false;
                       }
-                    />
-                    <span>{facility}</span>
-                  </label>
-                ))}
+                    }}
+                  >
+                    Apply
+                  </button>
+                </div>
               </div>
-            </fieldset>
+            </details>
           )}
 
           <div className="explorer__filter explorer__filter--checkbox">
@@ -305,10 +413,11 @@ export default function PropertyExplorer({
               <span>{t('explorer.affordableOnly')}</span>
             </label>
           </div>
-        </div>
+        </div>}
 
-        <p className="explorer__count">
+        <p className="explorer__count" aria-live="polite">
           {t('explorer.showing', { shown: filtered.length, total: totalCount })}
+          {' · '}{t('explorer.matchCount', { count: filtered.length })}
         </p>
 
         <div className="explorer__view-toggle" role="group" aria-label={t('explorer.view')}>
@@ -357,7 +466,7 @@ export default function PropertyExplorer({
           </div>
         ) : filtered.length > 0 ? (
           <div className="explorer__grid">
-            {filtered.map((property, index) => (
+            {visibleProperties.map((property, index) => (
               <div
                 key={property.id}
                 className={`reveal is-visible reveal--d${(index % 4) + 1}`}
@@ -392,6 +501,30 @@ export default function PropertyExplorer({
               {t('explorer.resetFilters')}
             </button>
           </div>
+        )}
+
+        {view === 'list' && filtered.length > 0 && (
+          <nav className="explorer__pagination" aria-label={t('explorer.pagination')}>
+            <button
+              type="button"
+              className="btn btn--secondary btn--sm"
+              disabled={page === 1}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+            >
+              {t('explorer.previous')}
+            </button>
+            <span aria-live="polite">
+              {t('explorer.pageOf', { page, pages: pageCount })}
+            </span>
+            <button
+              type="button"
+              className="btn btn--secondary btn--sm"
+              disabled={page === pageCount}
+              onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+            >
+              {t('explorer.next')}
+            </button>
+          </nav>
         )}
       </div>
     </section>
