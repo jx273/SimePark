@@ -19,6 +19,8 @@ import type { AffordabilityInputs, AffordabilityResult } from '../types/affordab
 export interface ScenarioAdjustments {
   /** Cash added to (positive) or removed from (negative) the down payment. */
   extraCash: number;
+  /** Direct scenario override for base down-payment cash. Null uses the base. */
+  downPayment: number | null;
   /** A specific property price to test. Null means "do not test a price". */
   targetPrice: number | null;
   /** Overrides for the base inputs. Null means "keep the base value". */
@@ -26,15 +28,23 @@ export interface ScenarioAdjustments {
   monthlyDebts: number | null;
   loanTenureYears: number | null;
   annualInterestRate: number | null;
+  /** Optional monthly payment ceiling carried by the main affordability form. */
+  preferredMaxMonthlyPayment: number | null;
+  preferredLocation: string | null;
+  minBedrooms: number | null;
 }
 
 export const EMPTY_ADJUSTMENTS: ScenarioAdjustments = {
   extraCash: 0,
+  downPayment: null,
   targetPrice: null,
   monthlyIncome: null,
   monthlyDebts: null,
   loanTenureYears: null,
   annualInterestRate: null,
+  preferredMaxMonthlyPayment: null,
+  preferredLocation: null,
+  minBedrooms: null,
 };
 
 /** A neutral starting point used before the user submits the main form. */
@@ -57,7 +67,10 @@ export function applyAdjustments(
   base: AffordabilityInputs,
   adjustments: ScenarioAdjustments
 ): AffordabilityInputs {
-  const downPayment = Math.max(0, base.downPayment + (adjustments.extraCash || 0));
+  const baseDownPayment = adjustments.downPayment === null
+    ? base.downPayment
+    : Math.max(0, adjustments.downPayment);
+  const downPayment = Math.max(0, baseDownPayment + (adjustments.extraCash || 0));
 
   return {
     ...base,
@@ -74,6 +87,15 @@ export function applyAdjustments(
       adjustments.annualInterestRate !== null
         ? Math.max(0, adjustments.annualInterestRate)
         : base.annualInterestRate,
+    ...(adjustments.preferredMaxMonthlyPayment === null
+      ? {}
+      : { preferredMaxMonthlyPayment: Math.max(0, adjustments.preferredMaxMonthlyPayment) }),
+    ...(adjustments.preferredLocation === null
+      ? {}
+      : { preferredLocation: adjustments.preferredLocation.trim() || undefined }),
+    ...(adjustments.minBedrooms === null
+      ? {}
+      : { minBedrooms: adjustments.minBedrooms > 0 ? Math.floor(adjustments.minBedrooms) : undefined }),
   };
 }
 

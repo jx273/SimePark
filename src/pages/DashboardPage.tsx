@@ -6,9 +6,11 @@ import {
   deleteAllMyData,
   deleteScenario,
   getPreferences,
+  getDisplayName,
   listActivity,
   listScenarios,
   upsertPreferences,
+  updateDisplayName,
   type ActivityEntry,
 } from '../lib/userRepository';
 import { navigate } from '../router/router';
@@ -54,6 +56,9 @@ export default function DashboardPage({
   const [scenarioInputs, setScenarioInputs] = useState<AffordabilityInputs>(NEUTRAL_BASE);
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [displayName, setDisplayName] = useState('');
+  const [displayNameLoading, setDisplayNameLoading] = useState(false);
+  const [displayNameSaving, setDisplayNameSaving] = useState(false);
 
   const enriched = useMemo(
     () =>
@@ -109,6 +114,21 @@ export default function DashboardPage({
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!user || !isConfigured) return;
+    let active = true;
+    setDisplayNameLoading(true);
+    void getDisplayName(user.id).then((result) => {
+      if (!active) return;
+      setDisplayName(result.data ?? user.user_metadata?.display_name ?? '');
+      if (result.error) setStatus(result.error);
+      setDisplayNameLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [user, isConfigured]);
+
   const propertiesById = useMemo(() => {
     const map = new Map<string, Property>();
     for (const property of properties) map.set(property.id, property);
@@ -161,6 +181,23 @@ export default function DashboardPage({
     window.setTimeout(() => setStatus(null), 3500);
   };
 
+  const saveDisplayName = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (displayName.trim().length > 80) {
+      setStatus(t('dashboard.displayNameTooLong'));
+      return;
+    }
+    setDisplayNameSaving(true);
+    const result = await updateDisplayName(user.id, displayName);
+    setDisplayNameSaving(false);
+    if (result.error) {
+      setStatus(result.error);
+      return;
+    }
+    setDisplayName(result.data ?? '');
+    setStatus(t('dashboard.displayNameSaved'));
+  };
+
   const tabs: Array<{ id: Tab; label: string; count?: number }> = [
     { id: 'saved', label: t('dashboard.tabs.saved'), count: savedProperties.length },
     { id: 'compare', label: t('dashboard.tabs.compare'), count: comparisonProperties.length },
@@ -177,7 +214,7 @@ export default function DashboardPage({
           <h1 className="section__title">{t('dashboard.title')}</h1>
           <p className="dashboard__welcome">
             {t('dashboard.welcome', {
-              name: user.user_metadata?.display_name ?? user.email ?? '',
+              name: displayName.trim() || user.user_metadata?.display_name || user.email || '',
             })}
           </p>
           <p className="section__subtitle">{t('dashboard.subtitle')}</p>
@@ -479,6 +516,29 @@ export default function DashboardPage({
         {tab === 'account' && (
           <div className="dashboard__form surface">
             <h2 className="dashboard__form-title">{t('dashboard.accountTitle')}</h2>
+
+            <form className="dashboard__display-name" onSubmit={saveDisplayName}>
+              <label className="form-group" htmlFor="account-display-name">
+                <span className="form-label">{t('dashboard.accountName')}</span>
+                <span className="form-helper">{t('dashboard.displayNameHelp')}</span>
+                <input
+                  id="account-display-name"
+                  className="form-input"
+                  value={displayName}
+                  maxLength={80}
+                  autoComplete="nickname"
+                  disabled={displayNameLoading || displayNameSaving}
+                  onChange={(event) => setDisplayName(event.target.value)}
+                />
+              </label>
+              <button
+                type="submit"
+                className="btn btn--primary"
+                disabled={displayNameLoading || displayNameSaving}
+              >
+                {displayNameLoading || displayNameSaving ? t('common.saving') : t('dashboard.saveDisplayName')}
+              </button>
+            </form>
 
             <dl className="dashboard__account">
               <div>

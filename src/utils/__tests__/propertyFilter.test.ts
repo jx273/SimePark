@@ -290,6 +290,27 @@ describe('filterPropertiesWithMeta — filtering behaviour', () => {
 });
 
 describe('sortProperties', () => {
+  it('keeps unpriced listings last for both price sort directions', () => {
+    const enriched = enrich([
+      makeProperty({ id: 'unpriced', priceMYR: null }),
+      makeProperty({ id: 'low', priceMYR: 200000 }),
+      makeProperty({ id: 'high', priceMYR: 800000 }),
+    ]);
+
+    expect(sortProperties(enriched, 'price-asc').map((property) => property.id)).toEqual([
+      'low',
+      'high',
+      'unpriced',
+    ]);
+    expect(sortProperties(enriched, 'price-desc').map((property) => property.id)).toEqual([
+      'high',
+      'low',
+      'unpriced',
+    ]);
+    const matchSorted = sortProperties(enriched, 'match');
+    expect(matchSorted[matchSorted.length - 1]?.id).toBe('unpriced');
+  });
+
   it('ranks affordable properties in a predictable order', () => {
     const enriched = enrich(
       [

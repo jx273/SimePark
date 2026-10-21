@@ -9,9 +9,18 @@ import type { AffordabilityInputs, AffordabilityResult } from '../types/affordab
 import type { PropertyWithCalculations } from '../types/property';
 import { buildAssistantContext } from '../utils/assistantContext';
 import { askAssistant } from '../utils/assistantClient';
+import { formatMYR } from '../utils/mortgage';
 import AssistantMessageText from './AssistantMessageText';
 import VoiceInput from './VoiceInput';
 import './AssistantChat.css';
+
+const PROPERTY_SPECIFIC_QUESTIONS = [
+  'Can I afford this property based on my current budget?',
+  'What would the estimated monthly repayment be for this property?',
+  'What deposit might I need for this property?',
+  'What should I check before buying this property?',
+  'How does this property compare with similar properties?',
+];
 
 interface AssistantChatProps {
   /** Null until the user submits the affordability form. */
@@ -142,7 +151,13 @@ export default function AssistantChat({
 
         <div className="assistant__panel">
           <div className="assistant__context">
-            {hasContext ? (
+            {selectedProperty ? (
+              <p className="assistant__context-text">
+                <span className="assistant__context-dot" aria-hidden="true" />
+                Focused on <strong>{selectedProperty.propertyName}</strong> ({selectedProperty.priceMYR ? formatMYR(selectedProperty.priceMYR) : t('common.unknown')} in {selectedProperty.location}).
+                {hasContext ? ' Your affordability profile is connected.' : ' You can ask any question about this property or general home-buying.'}
+              </p>
+            ) : hasContext ? (
               <p className="assistant__context-text">
                 <span className="assistant__context-dot" aria-hidden="true" />
                 {properties.length === 1
@@ -153,10 +168,8 @@ export default function AssistantChat({
               </p>
             ) : (
               <p className="assistant__context-text assistant__context-text--empty">
-                No affordability estimate yet. The assistant can still explain general
-                upfront costs, but it cannot discuss your numbers or recommend properties
-                until you{' '}
-                {onNavigate ? (
+                <strong>No affordability estimate yet.</strong> You can ask any question about properties, Malaysian home-buying, or upfront costs.
+                To check personalized loan limits, {onNavigate ? (
                   <button
                     type="button"
                     className="assistant__inline-link"
@@ -183,23 +196,35 @@ export default function AssistantChat({
             {messages.length === 0 && !isLoading && (
               <div className="assistant__intro">
                 <p className="assistant__intro-title">
-                  {t('assistant.newHere')}
+                  {selectedProperty ? `Suggested questions for ${selectedProperty.propertyName}:` : t('assistant.newHere')}
                 </p>
                 <ul className="assistant__suggestions">
-                  {SUGGESTED_QUESTION_KEYS.map((key) => {
-                    const question = t(`assistant.suggestions.${key}`);
-                    return (
-                      <li key={key}>
-                        <button
-                          type="button"
-                          className="assistant__suggestion"
-                          onClick={() => void send(question)}
-                        >
-                          {question}
-                        </button>
-                      </li>
-                    );
-                  })}
+                  {selectedProperty
+                    ? PROPERTY_SPECIFIC_QUESTIONS.map((question) => (
+                        <li key={question}>
+                          <button
+                            type="button"
+                            className="assistant__suggestion"
+                            onClick={() => void send(question)}
+                          >
+                            {question}
+                          </button>
+                        </li>
+                      ))
+                    : SUGGESTED_QUESTION_KEYS.map((key) => {
+                        const question = t(`assistant.suggestions.${key}`);
+                        return (
+                          <li key={key}>
+                            <button
+                              type="button"
+                              className="assistant__suggestion"
+                              onClick={() => void send(question)}
+                            >
+                              {question}
+                            </button>
+                          </li>
+                        );
+                      })}
                 </ul>
               </div>
             )}

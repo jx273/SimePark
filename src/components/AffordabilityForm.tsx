@@ -14,6 +14,7 @@ interface AffordabilityFormProps {
   onSubmit: (inputs: AffordabilityInputs) => void;
   /** Values to pre-fill, e.g. a loaded scenario or restored preferences. */
   initialInputs?: AffordabilityInputs | null;
+  onReset?: () => void;
   /** Persist the submitted values as the user's preferences, when signed in. */
   onPersistPreferences?: (inputs: AffordabilityInputs) => void;
 }
@@ -38,6 +39,7 @@ const LOCATIONS = [
 export default function AffordabilityForm({
   onSubmit,
   initialInputs = null,
+  onReset,
   onPersistPreferences,
 }: AffordabilityFormProps) {
   const { t } = useTranslation();
@@ -135,6 +137,15 @@ export default function AffordabilityForm({
       onSubmit(formData);
       onPersistPreferences?.(formData);
     }
+
+  }
+
+  function handleReset() {
+    setFormData(DEFAULT_AFFORDABILITY_INPUTS);
+    setErrors({});
+    setWarnings({});
+    setSubmitted(false);
+    onReset?.();
   }
 
   const inputValue = (value: number | undefined) =>
@@ -379,9 +390,15 @@ export default function AffordabilityForm({
             </div>
           </div>
 
-          <button type="submit" className="btn btn--primary btn--large af-form__submit">
-            {t('affordability.submit')}
-          </button>
+          <div className="af-form__actions">
+            <button type="submit" className="btn btn--primary btn--large af-form__submit">
+              {t('affordability.submit')}
+            </button>
+            <button type="button" className="btn btn--secondary btn--large" onClick={handleReset}>
+              {t('affordability.reset')}
+            </button>
+          </div>
+          <p className="af-form__disclaimer">{t('results.disclaimerText')}</p>
         </form>
       </div>
     </section>

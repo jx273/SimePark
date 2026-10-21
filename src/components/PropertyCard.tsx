@@ -84,6 +84,7 @@ export default function PropertyCard({
           )}
         </div>
 
+        <h4 className="property-card__finance-title">{t('card.affordabilityTitle')}</h4>
         <div className="property-card__finance">
           <div className="property-card__finance-item">
             <span className="property-card__finance-label">{t('card.estMonthly')}</span>
@@ -161,6 +162,11 @@ export default function PropertyCard({
           >
             <span aria-hidden="true">{isCompared ? '⊟' : '⊞'}</span>
           </button>
+          {compareDisabled && (
+            <p className="property-card__compare-limit" role="status">
+              {t('card.compareFull', { max: 3 })}
+            </p>
+          )}
         </div>
 
         <div className="property-card__footer">

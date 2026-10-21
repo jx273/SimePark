@@ -9,9 +9,9 @@
  * Nullable columns are typed `| null` deliberately. The UI must render null as
  * "Not recorded" and must never substitute a zero or a guess.
  *
- * Delivered catalogue: exactly SP-001..SP-004. The legacy demo-001..demo-015
- * records are removed by `0004_property_catalogue.sql`, and the seed migration
- * that used to recreate them is now a cleanup-only no-op.
+ * Delivered catalogue: SP-001..SP-030. The legacy demo-001..demo-015 records
+ * are removed by `0004_property_catalogue.sql`, and the seed migration that
+ * used to recreate them is now a cleanup-only no-op.
  */
 
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
@@ -120,6 +120,13 @@ export type PropertyMediaRow = {
   property_id: string;
   url: string;
   kind: string;
+  source_kind: 'external' | 'upload';
+  external_url: string | null;
+  source_url: string | null;
+  visibility: 'public' | 'internal';
+  watermark_permission: string | null;
+  watermark_status: 'not_applied' | 'applied';
+  admin_notes: string | null;
   caption: string | null;
   alt_text: string | null;
   is_cover: boolean;
@@ -137,6 +144,13 @@ export type PropertyMediaInsert = {
   property_id: string;
   url: string;
   kind: string;
+  source_kind?: 'external' | 'upload';
+  external_url?: string | null;
+  source_url?: string | null;
+  visibility?: 'public' | 'internal';
+  watermark_permission?: string | null;
+  watermark_status?: 'not_applied' | 'applied';
+  admin_notes?: string | null;
   caption?: string | null;
   alt_text?: string | null;
   is_cover?: boolean;

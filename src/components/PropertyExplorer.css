@@ -10,19 +10,102 @@
   border: 1px solid var(--color-border-light);
 }
 
+.explorer__filter-toggle {
+  margin-bottom: var(--space-md);
+}
+
 .explorer__facility-filter {
   grid-column: 1 / -1;
   min-width: 0;
-  padding: 1rem;
   border: 1px solid var(--color-border-light);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-lg);
+  background: var(--color-bg-white);
+  transition: all var(--transition-fast);
+}
+
+.explorer__facility-filter[open] {
+  border-color: var(--color-primary);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+
+.explorer__facility-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.15rem;
+  cursor: pointer;
+  user-select: none;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  list-style: none;
+}
+
+.explorer__facility-trigger::-webkit-details-marker {
+  display: none;
+}
+
+.explorer__facility-trigger-text {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.explorer__facility-trigger-count {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.explorer__facility-chevron {
+  font-size: 1.15rem;
+  color: var(--color-text-secondary);
+  transition: transform var(--transition-fast);
+}
+
+.explorer__facility-filter[open] .explorer__facility-chevron {
+  transform: rotate(180deg);
+  color: var(--color-primary);
+}
+
+.explorer__facility-panel {
+  padding: 0 1.15rem 1.15rem;
+  border-top: 1px solid var(--color-border-light);
+  margin-top: 0.25rem;
+}
+
+.explorer__facility-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: 0.75rem 0 0.5rem;
+  flex-wrap: wrap;
+}
+
+.explorer__facility-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.explorer__facility-count-badge {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
 }
 
 .explorer__facility-list {
   display: flex;
   flex-wrap: wrap;
   gap: 0.65rem 1.25rem;
-  margin-top: 0.75rem;
+  padding: 0.5rem 0;
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+.explorer__facility-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border-light);
 }
 
 .explorer__view-toggle {
@@ -109,6 +192,14 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
   gap: var(--space-lg);
+}
+
+.explorer__pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
+  margin-top: var(--space-xl);
 }
 
 @media (max-width: 768px) {

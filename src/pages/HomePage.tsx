@@ -28,6 +28,7 @@ interface HomePageProps {
   affordabilityInputs: AffordabilityInputs | null;
   affordabilityResult: AffordabilityResult | null;
   onSubmitAffordability: (inputs: AffordabilityInputs) => void;
+  onResetAffordability: () => void;
   onNavigateSection: (section: string) => void;
   onOpenProperty: (property: PropertyWithCalculations) => void;
   importedRate: number | null;
@@ -42,6 +43,7 @@ export default function HomePage({
   affordabilityInputs,
   affordabilityResult,
   onSubmitAffordability,
+  onResetAffordability,
   onNavigateSection,
   onOpenProperty,
   importedRate,
@@ -115,6 +117,7 @@ export default function HomePage({
       <AffordabilityForm
         onSubmit={handleAffordabilitySubmit}
         initialInputs={affordabilityInputs}
+        onReset={onResetAffordability}
       />
 
       {affordabilityResult && <AffordabilityResults result={affordabilityResult} />}
@@ -154,6 +157,12 @@ export default function HomePage({
         onGoToAffordability={() => onNavigateSection('affordability')}
       />
 
+      <CompareTray
+        properties={comparisonProperties}
+        onRemove={toggleCompared}
+        onClear={clearComparison}
+      />
+
       <ScenarioSimulator
         baseInputs={affordabilityInputs}
         baseResult={affordabilityResult}
@@ -182,12 +191,6 @@ export default function HomePage({
       />
 
       <HowItWorks />
-
-      <CompareTray
-        properties={comparisonProperties}
-        onRemove={toggleCompared}
-        onClear={clearComparison}
-      />
 
       {saveNotice && (
         <div className="toast" role="status">

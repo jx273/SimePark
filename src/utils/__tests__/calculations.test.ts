@@ -352,8 +352,8 @@ describe('Property filtering and ranking', () => {
     const enriched = enrichPropertiesWithCalculations(sampleProperties, inputs, result);
     const sorted = sortProperties(enriched, 'price-asc');
 
-    expect(sorted[0].priceMYR).toBeLessThanOrEqual(sorted[1].priceMYR);
-    expect(sorted[1].priceMYR).toBeLessThanOrEqual(sorted[2].priceMYR);
+    expect(sorted[0].priceMYR!).toBeLessThanOrEqual(sorted[1].priceMYR!);
+    expect(sorted[1].priceMYR!).toBeLessThanOrEqual(sorted[2].priceMYR!);
   });
 
   it('should sort by price descending', () => {
@@ -361,8 +361,8 @@ describe('Property filtering and ranking', () => {
     const enriched = enrichPropertiesWithCalculations(sampleProperties, inputs, result);
     const sorted = sortProperties(enriched, 'price-desc');
 
-    expect(sorted[0].priceMYR).toBeGreaterThanOrEqual(sorted[1].priceMYR);
-    expect(sorted[1].priceMYR).toBeGreaterThanOrEqual(sorted[2].priceMYR);
+    expect(sorted[0].priceMYR!).toBeGreaterThanOrEqual(sorted[1].priceMYR!);
+    expect(sorted[1].priceMYR!).toBeGreaterThanOrEqual(sorted[2].priceMYR!);
   });
 
   it('should never mark a property affordable when the down payment is not covered', () => {

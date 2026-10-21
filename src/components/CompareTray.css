@@ -21,6 +21,25 @@
   color: var(--color-text-muted);
 }
 
+.compare__selection {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm) var(--space-md);
+  margin: var(--space-md) 0;
+  padding: var(--space-md) var(--space-lg);
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-primary);
+  border-radius: var(--border-radius);
+}
+
+.compare__selection-note {
+  flex-basis: 100%;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
 /* Focusable scroll region so a keyboard user can reach every column. */
 .compare__scroll {
   margin-top: var(--space-lg);

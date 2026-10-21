@@ -215,36 +215,53 @@ export default function BankRateComparison({
                         <th>{t('affordability.interestRate')}</th>
                         <th>{t('simulator.rateType')}</th>
                         <th>{t('card.estMonthly')}</th>
+                        <th>{t('bankRates.diffVsBaseline')}</th>
                         <th>{t('simulator.totalInterest')}</th>
                         <th>{t('bankRates.origin')}</th>
                         <th>{t('common.apply')}</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {compared.map((row) => (
-                        <tr key={row.id}>
-                          <td>{row.label}</td>
-                          <td>{formatPercentage(row.annualRate)}</td>
-                          <td>{row.rateType ?? t('common.unknown')}</td>
-                          <td>{formatMYR(row.monthlyPayment)}</td>
-                          <td>{formatMYR(row.totalInterest)}</td>
-                          <td>{originLabel(row.origin)}</td>
-                          <td>
-                            {onApplyRate && (
-                              <button
-                                type="button"
-                                className="btn btn--secondary btn--sm"
-                                onClick={() => onApplyRate(row.annualRate)}
-                              >
-                                {t('simulator.applyManualRate')}
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
+                      {compared.map((row) => {
+                        const baseline = compared.find((r) => r.origin === 'calculator') ?? compared[0];
+                        const diff = row.monthlyPayment - (baseline ? baseline.monthlyPayment : row.monthlyPayment);
+                        return (
+                          <tr key={row.id}>
+                            <td>{row.label}</td>
+                            <td>{formatPercentage(row.annualRate)}</td>
+                            <td>{row.rateType ?? t('common.unknown')}</td>
+                            <td>{formatMYR(row.monthlyPayment)}</td>
+                            <td>
+                              {diff === 0 ? (
+                                <span style={{ color: 'var(--color-text-muted)' }}>Baseline</span>
+                              ) : diff < 0 ? (
+                                <span style={{ color: '#2E7D32', fontWeight: 600 }}>Save {formatMYR(Math.abs(diff))}/mo</span>
+                              ) : (
+                                <span style={{ color: 'var(--brand-red)', fontWeight: 600 }}>+{formatMYR(diff)}/mo</span>
+                              )}
+                            </td>
+                            <td>{formatMYR(row.totalInterest)}</td>
+                            <td>{originLabel(row.origin)}</td>
+                            <td>
+                              {onApplyRate && (
+                                <button
+                                  type="button"
+                                  className="btn btn--secondary btn--sm"
+                                  onClick={() => onApplyRate(row.annualRate)}
+                                >
+                                  {t('simulator.applyManualRate')}
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
+                <p className="form-helper" style={{ marginTop: 'var(--space-md)' }}>
+                  * Repayments use identical loan principal and tenure assumptions, calculated mathematically using standard monthly amortisation consistent with the affordability calculator.
+                </p>
               </>
             )}
           </div>

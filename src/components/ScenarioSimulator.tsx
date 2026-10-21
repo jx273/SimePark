@@ -63,6 +63,26 @@ export default function ScenarioSimulator({
     }
   }, [importedRate]);
 
+  useEffect(() => {
+    if (baseInputs === null) {
+      setAdjustments(EMPTY_ADJUSTMENTS);
+      setScenarioName('');
+      return;
+    }
+
+    setAdjustments((current) => ({
+      ...current,
+      downPayment: null,
+      monthlyIncome: null,
+      monthlyDebts: null,
+      loanTenureYears: null,
+      annualInterestRate: null,
+      preferredMaxMonthlyPayment: null,
+      preferredLocation: null,
+      minBedrooms: null,
+    }));
+  }, [baseInputs]);
+
   const outcome = useMemo(
     () => runScenario(scenarioBase, adjustments),
     [scenarioBase, adjustments]
@@ -143,7 +163,7 @@ export default function ScenarioSimulator({
             </p>
             {importedRate !== null && (
               <p className="simulator__base-note" role="status">
-              {t('simulator.importedRateNote')}
+                {t('simulator.importedRateNote')}
               </p>
             )}
 
@@ -157,6 +177,18 @@ export default function ScenarioSimulator({
                   value={adjustments.extraCash === 0 ? '' : adjustments.extraCash}
                   placeholder="0"
                   onChange={(event) => update('extraCash', readOverride(event.target.value) ?? 0)}
+                />
+              </label>
+
+              <label className="form-group">
+                <span className="form-label">{t('simulator.downPaymentCash')}</span>
+                <input
+                  type="number"
+                  className="form-input"
+                  step="1000"
+                  min="0"
+                  value={adjustments.downPayment ?? base.downPayment}
+                  onChange={(event) => update('downPayment', readOverride(event.target.value))}
                 />
               </label>
 
@@ -180,8 +212,7 @@ export default function ScenarioSimulator({
                   className="form-input"
                   step="100"
                   min="0"
-                  value={adjustments.monthlyIncome ?? ''}
-                  placeholder={String(base.monthlyIncome)}
+                  value={adjustments.monthlyIncome ?? base.monthlyIncome}
                   onChange={(event) => update('monthlyIncome', readOverride(event.target.value))}
                 />
               </label>
@@ -193,8 +224,7 @@ export default function ScenarioSimulator({
                   className="form-input"
                   step="100"
                   min="0"
-                  value={adjustments.monthlyDebts ?? ''}
-                  placeholder={String(base.monthlyDebts)}
+                  value={adjustments.monthlyDebts ?? base.monthlyDebts}
                   onChange={(event) => update('monthlyDebts', readOverride(event.target.value))}
                 />
               </label>
@@ -207,8 +237,7 @@ export default function ScenarioSimulator({
                   step="1"
                   min="1"
                   max="40"
-                  value={adjustments.loanTenureYears ?? ''}
-                  placeholder={String(base.loanTenureYears)}
+                  value={adjustments.loanTenureYears ?? base.loanTenureYears}
                   onChange={(event) => update('loanTenureYears', readOverride(event.target.value))}
                 />
               </label>
@@ -221,9 +250,47 @@ export default function ScenarioSimulator({
                   step="0.1"
                   min="0"
                   max="20"
-                  value={adjustments.annualInterestRate ?? (importedRate ?? '')}
-                  placeholder={String(base.annualInterestRate)}
+                  value={adjustments.annualInterestRate ?? (importedRate ?? base.annualInterestRate)}
                   onChange={(event) => update('annualInterestRate', readOverride(event.target.value))}
+                />
+              </label>
+
+              {base.preferredMaxMonthlyPayment !== undefined && (
+                <label className="form-group">
+                  <span className="form-label">{t('simulator.preferredPayment')}</span>
+                  <input
+                    type="number"
+                    className="form-input"
+                    step="100"
+                    min="0"
+                    value={adjustments.preferredMaxMonthlyPayment ?? base.preferredMaxMonthlyPayment}
+                    onChange={(event) =>
+                      update('preferredMaxMonthlyPayment', readOverride(event.target.value))
+                    }
+                  />
+                </label>
+              )}
+
+              <label className="form-group">
+                <span className="form-label">{t('simulator.preferredLocation')}</span>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={adjustments.preferredLocation ?? base.preferredLocation ?? ''}
+                  onChange={(event) => update('preferredLocation', event.target.value)}
+                />
+              </label>
+
+              <label className="form-group">
+                <span className="form-label">{t('simulator.minimumBedrooms')}</span>
+                <input
+                  type="number"
+                  className="form-input"
+                  min="0"
+                  max="50"
+                  step="1"
+                  value={adjustments.minBedrooms ?? base.minBedrooms ?? ''}
+                  onChange={(event) => update('minBedrooms', readOverride(event.target.value))}
                 />
               </label>
             </div>
@@ -231,6 +298,18 @@ export default function ScenarioSimulator({
             <div className="simulator__actions">
               <button type="button" className="btn btn--secondary btn--sm" onClick={reset}>
                 {t('simulator.reset')}
+              </button>
+              <button
+                type="button"
+                className="btn btn--secondary btn--sm"
+                title={t('simulator.syncWithCalculator')}
+                onClick={() => {
+                  setAdjustments(EMPTY_ADJUSTMENTS);
+                  setScenarioName('');
+                  onClearImportedRate?.();
+                }}
+              >
+                🔄 {t('simulator.syncWithCalculator')}
               </button>
               {canSave && onSaveScenario && (
                 <div className="simulator__save">

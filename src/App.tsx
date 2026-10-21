@@ -11,6 +11,8 @@ import HomePage from './pages/HomePage';
 import PropertyDetailPage from './pages/PropertyDetailPage';
 import DashboardPage from './pages/DashboardPage';
 import AdminPage from './pages/AdminPage';
+import AdminShell from './components/AdminShell';
+import FloatingCompareBar from './components/FloatingCompareBar';
 import AuthPage from './pages/AuthPage';
 import PrivacyPage from './pages/PrivacyPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -206,6 +208,10 @@ function AppShell() {
             affordabilityInputs={userInputs}
             affordabilityResult={affordabilityResult}
             onSubmitAffordability={setUserInputs}
+            onResetAffordability={() => {
+              setUserInputs(null);
+              setImportedRate(null);
+            }}
             onNavigateSection={scrollToSection}
             onOpenProperty={openProperty}
             importedRate={importedRate}
@@ -252,6 +258,14 @@ function AppShell() {
     }
   };
 
+  if (route.name === 'admin') {
+    return (
+      <AdminShell>
+        <AdminPage />
+      </AdminShell>
+    );
+  }
+
   return (
     <div className={`app${sidebarCollapsed ? ' app--sidebar-collapsed' : ''}`}>
       <p className="sr-only" role="status" aria-live="polite">
@@ -279,6 +293,8 @@ function AppShell() {
           <Footer onNavigateSection={scrollToSection} />
         </div>
       </div>
+
+      <FloatingCompareBar catalog={catalog} />
 
       {catalogSource === 'bundled-source' && !isLoading && <p className="sr-only">{t('common.localOnly')}</p>}
     </div>

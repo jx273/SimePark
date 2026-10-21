@@ -24,7 +24,6 @@ import type {
 } from '../types/property';
 import { PROPERTY_TYPES } from '../types/property';
 import sourceRecords from '../data/properties.source.json';
-import mediaManifest from '../data/media.manifest.json';
 
 /** One record exactly as supplied in the source JSON. */
 export interface SourcePropertyRecord {
@@ -69,22 +68,9 @@ export interface SourcePropertyRecord {
   notes?: string | null;
   /** Optional: only when the source explicitly states a travel mode. */
   transitMode?: string | null;
-}
-
-/** One manifest entry for a supplied image. */
-export interface MediaManifestEntry {
-  file: string;
-  kind: 'photo' | 'floorplan';
-  sourceFile: string;
-  order: number;
-}
-
-export interface MediaManifest {
-  [propertyId: string]: {
-    name: string;
-    sourceFolder: string;
-    entries: MediaManifestEntry[];
-  };
+  imageUrls?: string[] | null;
+  floorPlanUrls?: string[] | null;
+  videoUrls?: string[] | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -132,14 +118,19 @@ export function parseAmenities(raw: string | null | undefined): PropertyAmenity[
     const entry = part.replace(/\s+/g, ' ').trim();
     if (!entry) continue;
 
-    // Capture a distance in km included in parentheses, e.g. "(0.3km)" or "(15 km)".
-    const match = entry.match(/^(.*?)\s*\(\s*([\d.]+)\s*km\s*\)\s*$/i);
+    const match = entry.match(/\(?\s*(-?\d+(?:\.\d+)?)\s*km\s*\)?/i);
     if (match) {
-      const distance = Number.parseFloat(match[2]);
-      result.push({
-        name: match[1].trim(),
-        distanceKm: Number.isFinite(distance) ? distance : null,
-      });
+      const distance = Number.parseFloat(match[1]);
+      const name = entry
+        .replace(match[0], '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (name) {
+        result.push({
+          name,
+          distanceKm: Number.isFinite(distance) && distance >= 0 ? distance : null,
+        });
+      }
     } else {
       result.push({ name: entry, distanceKm: null });
     }
@@ -191,6 +182,33 @@ function asStringOrNull(value: unknown): string | null {
   return trimmed === '' ? null : trimmed;
 }
 
+export function isSafeMediaUrl(value: string | null | undefined): value is string {
+  if (!value) return false;
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+export function isPubliclyDisplayableMedia(
+  media: PropertyMedia
+): boolean {
+  if (media.visibility !== 'public') {
+    return false;
+  }
+
+  const permission = media.permissionStatus?.toLowerCase();
+  // Do not require manual approval; only suppress if explicitly restricted
+  if (permission === 'restricted') {
+    return false;
+  }
+
+  return isSafeMediaUrl(
+    media.sourceKind === 'external' ? media.externalUrl ?? media.url : media.url
+  );
+}
+
 /** Map source wording onto a known property type, or null. */
 export function toPropertyType(value: string | null | undefined): PropertyType | null {
   if (!value) return null;
@@ -201,74 +219,50 @@ export function toPropertyType(value: string | null | undefined): PropertyType |
 }
 
 /* ------------------------------------------------------------------ */
-/* Media                                                              */
-/* ------------------------------------------------------------------ */
-
-/**
- * Build media rows for one property from the manifest.
- *
- * The supplied archive's folder names are shifted relative to the JSON ids, so
- * the manifest was produced by matching the property NAME in the filenames, not
- * the folder label. This function trusts that manifest, which keeps each image
- * attached to exactly one, correct property.
- *
- * The first photograph (the base filename, without a "(n)" suffix) is the cover.
- * Nothing is assumed about the first *file* in the archive.
- */
-export function buildMedia(
-  propertyId: string,
-  entries: MediaManifestEntry[],
-  options: { attribution: string | null; permissionStatus: string | null }
-): PropertyMedia[] {
-  const ordered = [...entries].sort((a, b) => {
-    if (a.kind !== b.kind) return a.kind === 'photo' ? -1 : 1;
-    return a.order - b.order;
-  });
-
-  const firstPhotoUrl = ordered.find((entry) => entry.kind === 'photo')?.file ?? null;
-
-  return ordered.map((entry, index) => {
-    const kind: PropertyMediaKind = entry.kind;
-    const isCover = kind === 'photo' && entry.file === firstPhotoUrl;
-
-    return {
-      id: `${propertyId}-media-${index + 1}`,
-      propertyId,
-      url: entry.file,
-      kind,
-      caption: captionFor(entry, kind),
-      altText: null,
-      isCover,
-      sortOrder: entry.order,
-      attribution: options.attribution,
-      permissionStatus: options.permissionStatus,
-      watermarkedUrl: null,
-      originalUrl: null,
-    };
-  });
-}
-
-/**
- * Captions are deliberately generic: the archive filenames do not reliably say
- * whether a photo shows an exterior, a living room or a bedroom, so labelling one
- * would be a guess.
- */
-function captionFor(entry: MediaManifestEntry, kind: PropertyMediaKind): string {
-  if (kind === 'floorplan') {
-    return entry.sourceFile.startsWith('PUFLO')
-      ? 'Floor plan from the source listing'
-      : 'Floor plan excerpt from the source listing';
-  }
-  return `Photograph ${entry.order} from the source listing`;
-}
-
-/* ------------------------------------------------------------------ */
 /* Record adaptation                                                  */
 /* ------------------------------------------------------------------ */
 
 export interface AdaptOptions {
   media?: PropertyMedia[];
   isPublished?: boolean;
+}
+
+function sourceMedia(
+  record: SourcePropertyRecord
+): PropertyMedia[] {
+  const entries: Array<{ kind: PropertyMediaKind; urls: string[] | null | undefined }> = [
+    { kind: 'photo', urls: record.imageUrls },
+    { kind: 'floorplan', urls: record.floorPlanUrls },
+    { kind: 'video', urls: record.videoUrls },
+  ];
+
+  return entries.flatMap(({ kind, urls }) =>
+    (urls ?? []).flatMap((url, index) => {
+      if (typeof url !== 'string' || !url.trim()) return [];
+      const cleanUrl = url.trim();
+      return [{
+        id: `${record.id}-${kind}-${index + 1}`,
+        propertyId: record.id,
+        url: cleanUrl,
+        kind,
+        sourceKind: 'external' as const,
+        externalUrl: cleanUrl,
+        sourceUrl: asStringOrNull(record.sourceUrl),
+        storagePath: null,
+        visibility: 'public' as const,
+        caption: null,
+        altText: null,
+        isCover: kind === 'photo' && index === 0,
+        sortOrder: index + 1,
+        attribution: null,
+        permissionStatus: asStringOrNull(record.imagePermission),
+        watermarkStatus: 'not_applied' as const,
+        adminNotes: null,
+        watermarkedUrl: null,
+        originalUrl: cleanUrl,
+      }];
+    })
+  );
 }
 
 /**
@@ -285,7 +279,7 @@ export function adaptSourceRecord(
   if (!record.id || !record.propertyName) return null;
 
   const price = asNumberOrNull(record.priceMYR);
-  if (price === null || price <= 0) return null;
+  if (price !== null && price <= 0) return null;
 
   const propertyType = toPropertyType(record.propertyType);
   const coords = normalizeCoordinates(record.latitude, record.longitude);
@@ -353,7 +347,7 @@ export function adaptSourceRecord(
 
     isPublished: options.isPublished ?? true,
     isExample: record.isExample === true,
-    media: options.media ?? [],
+    media: options.media ?? sourceMedia(record),
   };
 }
 
@@ -365,21 +359,12 @@ export function adaptSourceRecord(
  * the database, so admin edits are never overridden by this file.
  */
 export function buildBundledCatalog(): Property[] {
-  const manifest = mediaManifest as unknown as MediaManifest;
   const records = sourceRecords as unknown as SourcePropertyRecord[];
 
   const properties: Property[] = [];
 
   for (const record of records) {
-    const manifestEntry = manifest[record.id];
-    const media = manifestEntry
-      ? buildMedia(record.id, manifestEntry.entries, {
-          attribution: 'Property agent',
-          permissionStatus: asStringOrNull(record.imagePermission) ?? 'unknown',
-        })
-      : [];
-
-    const adapted = adaptSourceRecord(record, { media, isPublished: true });
+    const adapted = adaptSourceRecord(record, { isPublished: true });
     if (adapted) properties.push(adapted);
   }
 

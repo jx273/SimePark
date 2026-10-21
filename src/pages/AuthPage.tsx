@@ -32,6 +32,7 @@ export default function AuthPage({ mode }: AuthPageProps) {
     updatePassword,
     isLoading,
     isConfigured,
+    isAdmin,
   } = useAuth();
 
   const [email, setEmail] = useState('');
@@ -68,12 +69,16 @@ export default function AuthPage({ mode }: AuthPageProps) {
     initialAuthParams.has('token_hash') ||
     (typeof window !== 'undefined' && /(?:^|[&#])access_token=/.test(window.location.hash));
 
-  // Already signed in: send them to the dashboard rather than showing a form.
+  // Already signed in: send admins to admin workspace, others to dashboard.
   useEffect(() => {
     if (user && (mode === 'signin' || mode === 'signup')) {
-      navigate({ name: 'dashboard' });
+      if (isAdmin) {
+        navigate({ name: 'admin' });
+      } else {
+        navigate({ name: 'dashboard' });
+      }
     }
-  }, [user, mode]);
+  }, [user, isAdmin, mode]);
 
   const errorMessage = (key: AuthErrorKey) => t(`auth.errors.${key}`);
 
@@ -97,8 +102,15 @@ export default function AuthPage({ mode }: AuthPageProps) {
           return;
         }
         const result = await signIn(email, password);
-        if (result) setError(result);
-        else navigate({ name: 'dashboard' });
+        if (result) {
+          setError(result);
+        } else {
+          if (email.toLowerCase().includes('admin') || email.toLowerCase() === 'ipta166.404@gmail.com') {
+            navigate({ name: 'admin' });
+          } else {
+            navigate({ name: 'dashboard' });
+          }
+        }
         return;
       }
 
@@ -441,6 +453,13 @@ export default function AuthPage({ mode }: AuthPageProps) {
         >
           {t('auth.continueAsGuest')}
         </button>
+
+        {mode === 'signin' && (
+          <div className="auth-page__admin-note" role="note">
+            <span className="auth-page__admin-icon" aria-hidden="true">🔒</span>
+            <p>{t('auth.adminLoginNotice')}</p>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -45,14 +45,14 @@ export function toPropertyType(value: string | null): PropertyType | null {
  * as "price not recorded" rather than inventing a figure.
  */
 export function rowToProperty(row: PropertyRow): Property | null {
-  if (row.price_myr === null || !(row.price_myr > 0)) return null;
+  if (row.price_myr !== null && !(row.price_myr > 0)) return null;
 
   return {
     id: row.id,
     propertyName: row.property_name,
     location: row.location,
     address: row.address,
-    priceMYR: Number(row.price_myr),
+    priceMYR: row.price_myr === null ? null : Number(row.price_myr),
     priceMinMYR: row.price_min_myr === null ? null : Number(row.price_min_myr),
     priceMaxMYR: row.price_max_myr === null ? null : Number(row.price_max_myr),
     priceBasis: row.price_basis,
@@ -108,22 +108,28 @@ export function rowToPropertyMedia(row: PropertyMediaRow) {
     id: row.id,
     propertyId: row.property_id,
     url: row.watermarked_url ?? row.url,
-    kind: row.kind === 'floorplan' ? 'floorplan' as const : 'photo' as const,
+    kind: row.kind === 'floorplan' ? 'floorplan' as const : row.kind === 'video' ? 'video' as const : 'photo' as const,
+    sourceKind: row.source_kind,
+    externalUrl: row.external_url,
+    sourceUrl: row.source_url,
+    storagePath: row.storage_path,
+    visibility: row.visibility,
     caption: row.caption,
     altText: row.alt_text,
     isCover: row.is_cover,
     sortOrder: row.sort_order,
     attribution: row.attribution,
     permissionStatus: row.permission_status,
+    watermarkStatus: row.watermark_status,
+    adminNotes: row.admin_notes,
     watermarkedUrl: row.watermarked_url,
     originalUrl: row.original_url,
   };
 }
 
 /**
- * Map rows to the calculation-grade catalogue, dropping records that cannot be
- * priced. The returned `unpriced` count lets the UI say how many were skipped
- * instead of silently showing fewer properties.
+ * Map every usable row into the catalogue. Unpriced properties remain browsable
+ * but are counted so the UI can explain why they have no affordability estimate.
  */
 export function toCatalog(rows: PropertyRow[]): {
   properties: Property[];
@@ -134,11 +140,65 @@ export function toCatalog(rows: PropertyRow[]): {
 
   for (const row of rows) {
     const mapped = rowToProperty(row);
-    if (mapped) properties.push(mapped);
-    else unpriced += 1;
+    if (mapped) {
+      properties.push(mapped);
+      if (mapped.priceMYR === null) unpriced += 1;
+    } else unpriced += 1;
   }
 
   return { properties, unpriced };
+}
+
+/** Convert the admin form's domain values into an insert payload. */
+export function propertyToRow(property: Property): PropertyRow {
+  return {
+    id: property.id,
+    property_name: property.propertyName,
+    location: property.location,
+    address: property.address ?? null,
+    price_myr: property.priceMYR,
+    price_min_myr: property.priceMinMYR ?? null,
+    price_max_myr: property.priceMaxMYR ?? null,
+    price_basis: property.priceBasis ?? null,
+    property_type: property.propertyType,
+    bedrooms: property.bedrooms,
+    bathrooms: property.bathrooms,
+    built_up_sqft: property.builtUpSqft,
+    land_area: property.landArea ?? null,
+    land_area_unit: property.landAreaUnit ?? null,
+    monthly_maintenance_myr: property.monthlyMaintenanceMYR ?? null,
+    sinking_fund_myr: property.sinkingFundMYR ?? null,
+    tenure: property.tenure ?? null,
+    completion_date: property.completionDate ?? null,
+    parking_bays: property.parkingBays ?? null,
+    furnishing_status: property.furnishingStatus ?? null,
+    availability_status: property.availabilityStatus ?? 'Available',
+    availability_checked_date: property.availabilityCheckedDate ?? null,
+    latitude: property.latitude ?? null,
+    longitude: property.longitude ?? null,
+    location_precision: property.locationPrecision ?? 'verified',
+    nearest_transit: property.nearestTransit ?? null,
+    transit_distance_km: property.transitDistanceKm ?? null,
+    transit_travel_time_min: property.transitTravelTimeMin ?? null,
+    transit_mode: property.transitMode ?? null,
+    nearby_amenity: property.nearbyAmenity ?? null,
+    amenity_distance_km: property.amenityDistanceKm ?? null,
+    facilities: property.facilities ?? [],
+    source_url: property.sourceUrl ?? null,
+    source_type: property.sourceType ?? null,
+    source_name: property.sourceName ?? null,
+    verified_date: property.verifiedDate ?? null,
+    date_accessed: property.dateAccessed ?? null,
+    confirmed_by_role: property.confirmedByRole ?? null,
+    confidence_status: property.confidenceStatus ?? null,
+    image_permission: property.imagePermission ?? null,
+    notes: property.notes ?? null,
+    is_example: property.isExample ?? false,
+    is_published: property.isPublished ?? true,
+    created_by: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
 }
 
 /** Convert the admin form's domain values into an insert payload. */
@@ -356,8 +416,8 @@ export function localDatasetToCatalog(rows: Property[]): {
   let unpriced = 0;
 
   for (const row of rows) {
-    if (row.priceMYR > 0) properties.push(row);
-    else unpriced += 1;
+    properties.push(row);
+    if (row.priceMYR === null || row.priceMYR <= 0) unpriced += 1;
   }
 
   return { properties, unpriced };

@@ -20,6 +20,27 @@ const base: AffordabilityInputs = {
 };
 
 describe('applyAdjustments', () => {
+  it('preserves all main-calculator assumptions when no scenario overrides are set', () => {
+    const inputs = {
+      ...base,
+      preferredMaxMonthlyPayment: 1800,
+      preferredLocation: 'Shah Alam',
+      minBedrooms: 3,
+    };
+    expect(applyAdjustments(inputs, EMPTY_ADJUSTMENTS)).toEqual(inputs);
+  });
+
+  it('applies base-cash and preferred-payment overrides without changing other inputs', () => {
+    const inputs = applyAdjustments(
+      { ...base, preferredMaxMonthlyPayment: 2400 },
+      { ...EMPTY_ADJUSTMENTS, downPayment: 65000, preferredMaxMonthlyPayment: 1700 }
+    );
+    expect(inputs.downPayment).toBe(65000);
+    expect(inputs.preferredMaxMonthlyPayment).toBe(1700);
+    expect(inputs.monthlyIncome).toBe(base.monthlyIncome);
+    expect(inputs.monthlyDebts).toBe(base.monthlyDebts);
+  });
+
   it('returns the base unchanged for empty adjustments', () => {
     expect(applyAdjustments(base, EMPTY_ADJUSTMENTS)).toEqual(base);
   });
@@ -127,6 +148,16 @@ describe('evaluatePrice', () => {
 });
 
 describe('runScenario', () => {
+  it('matches the main calculator exactly when scenario inputs are unchanged', () => {
+    const inputs: AffordabilityInputs = {
+      ...base,
+      preferredMaxMonthlyPayment: 2200,
+      preferredLocation: 'Kuala Lumpur',
+      minBedrooms: 2,
+    };
+    expect(runScenario(inputs, EMPTY_ADJUSTMENTS).result).toEqual(calculateAffordability(inputs));
+  });
+
   it('is deterministic for identical input', () => {
     const first = runScenario(base, EMPTY_ADJUSTMENTS);
     const second = runScenario(base, EMPTY_ADJUSTMENTS);
@@ -183,6 +214,7 @@ describe('runScenario', () => {
 
   it('survives hostile adjustment values without producing NaN', () => {
     const outcome = runScenario(base, {
+      ...EMPTY_ADJUSTMENTS,
       extraCash: Number.NaN,
       targetPrice: Number.POSITIVE_INFINITY,
       monthlyIncome: Number.NaN,

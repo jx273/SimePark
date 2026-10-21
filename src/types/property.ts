@@ -2,7 +2,7 @@
  * Property data model for SimePark.
  *
  * The shape now covers the fields present in the authoritative source dataset
- * (SP-001..SP-004) while keeping every previously-used field intact, so existing
+ * (SP-001..SP-030) while keeping every previously-used field intact, so existing
  * affordability, filtering and comparison logic keeps working.
  *
  * DATA-INTEGRITY CONVENTIONS
@@ -27,8 +27,8 @@ export interface Property {
   /** Project address when recorded in the source, else null */
   address?: string | null;
 
-  /** Headline price in MYR. Required for any affordability calculation. */
-  priceMYR: number;
+  /** Headline price in MYR. Null when the source explicitly has no price. */
+  priceMYR: number | null;
   /** Lower bound when the source gives a range or a "starting price" */
   priceMinMYR?: number | null;
   /** Upper bound when the source gives a range */
@@ -133,15 +133,20 @@ export interface PropertyAmenity {
 
 export type LocationPrecision = 'verified' | 'approximate' | 'unknown';
 
-export type PropertyMediaKind = 'photo' | 'floorplan';
+export type PropertyMediaKind = 'photo' | 'floorplan' | 'video';
 
 /** One photograph or floor plan belonging to exactly one property. */
 export interface PropertyMedia {
   id: string;
   propertyId: string;
-  /** Public URL or site-relative path, e.g. /media/SP-001/photo-1.jpg */
+  /** Safe direct URL or signed Storage URL, checked before public display. */
   url: string;
   kind: PropertyMediaKind;
+  sourceKind: 'external' | 'upload';
+  externalUrl: string | null;
+  sourceUrl: string | null;
+  storagePath: string | null;
+  visibility: 'public' | 'internal';
   /** Short caption shown under the image */
   caption: string | null;
   /** Accessible description. Falls back to the caption, never invented details. */
@@ -152,6 +157,8 @@ export interface PropertyMedia {
   attribution: string | null;
   /** Permission status carried from the property record */
   permissionStatus: string | null;
+  watermarkStatus: 'not_applied' | 'applied';
+  adminNotes: string | null;
   /** When an upload was watermarked, the generated copy (original retained) */
   watermarkedUrl: string | null;
   /** Original upload location, retained when a watermarked copy exists */
