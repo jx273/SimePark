@@ -496,7 +496,7 @@ const ms = {
     signInSubtitle: 'Simpan rumah, perbandingan dan senario, dan kekalkannya merentas peranti.',
     savePromptTitle: 'Log masuk untuk menyimpan hartanah',
     savePromptText: 'Log masuk atau cipta akaun untuk menyimpan hartanah kegemaran anda, menjejaki senario bajet, dan mengaksesnya pada sebarang peranti.',
-    adminLoginNotice: 'Penilai Diberi Kuasa: Log masuk dengan kelayakan pentadbir yang dibekalkan secara berasingan oleh pasukan projek untuk mengakses Ruang Kerja Pentadbir khusus.',
+    adminLoginNotice: 'Akaun pentadbir disediakan untuk mengakses dan menguji Papan Pemuka Admin SimePark. Admin e-mel: ipta166.404@gmail.com\n    Admin password: 12345678',
     signUpTitle: 'Buka akaun SimePark anda',
     signUpSubtitle: 'Menyimpan adalah pilihan — kalkulator dan senarai hartanah terbuka kepada semua.',
     email: 'E-mel',

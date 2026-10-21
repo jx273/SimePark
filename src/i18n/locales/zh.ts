@@ -489,7 +489,7 @@ const zh = {
     signInSubtitle: '保存房产、比较和情境，并在不同设备间保留。',
     savePromptTitle: '登录以保存房产',
     savePromptText: '登录或创建账号以保存您喜爱的房产、跟踪预算方案，并在任何设备上随时查看。',
-    adminLoginNotice: '授权评审人员：请使用项目团队另行提供的管理员凭据登录，以访问专属管理工作区。',
+    adminLoginNotice: '以下提供管理员账号，供您登录并测试 SimePark 管理后台。管理员邮箱：ipta166.404@gmail.com\n    管理员密码：12345678',
     signUpTitle: '创建您的 SimePark 账号',
     signUpSubtitle: '保存功能是可选的 — 计算器和房产列表对所有人开放。',
     email: '电子邮件',
