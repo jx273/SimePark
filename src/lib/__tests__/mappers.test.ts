@@ -233,6 +233,17 @@ describe('admin form mapping', () => {
     expect(insert.is_example).toBe(true);
   });
 
+  it('enforces properties_example_not_verified constraint by setting is_example to false when verified_date is present', () => {
+    const form = rowToAdminForm(row({ verified_date: '2026-10-21', is_example: true }));
+    const insert = propertyToInsert(form, 'user-1');
+    expect(insert.verified_date).toBe('2026-10-21');
+    expect(insert.is_example).toBe(false);
+
+    const update = formToUpdate(form);
+    expect(update.verified_date).toBe('2026-10-21');
+    expect(update.is_example).toBe(false);
+  });
+
   it('round-trips the source metadata and uncertainty fields', () => {
     const form = rowToAdminForm(
       row({

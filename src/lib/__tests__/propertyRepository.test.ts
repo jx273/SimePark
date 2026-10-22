@@ -263,4 +263,49 @@ describe('fetchCatalog & fetchPropertyById — Issue 2: Publication & Fallback r
     expect(result).not.toBeNull();
     expect(result?.id).toBe('SP-005');
   });
+
+  it('guarantees SP-030 is always restored to The Charlotte even if the database has a stale KLCC record', async () => {
+    const fakeClient = {
+      from: vi.fn().mockImplementation((table: string) => {
+        if (table === 'properties') {
+          return {
+            select: vi.fn().mockReturnValue({
+              order: vi.fn().mockResolvedValue({
+                data: [
+                  {
+                    id: 'SP-030',
+                    property_name: 'KLCC Luxury Suites',
+                    location: 'KLCC, Kuala Lumpur',
+                    is_published: true,
+                    is_example: false,
+                    price_myr: 1200000,
+                  },
+                ],
+                error: null,
+              }),
+            }),
+          };
+        }
+        if (table === 'property_media') {
+          return {
+            select: vi.fn().mockReturnValue({
+              in: vi.fn().mockReturnValue({
+                order: vi.fn().mockResolvedValue({ data: [], error: null }),
+              }),
+            }),
+          };
+        }
+        return {};
+      }),
+    };
+
+    vi.spyOn(supabaseModule, 'getSupabaseClient').mockResolvedValue(fakeClient as any);
+
+    const catalog = await fetchCatalog();
+    const sp30 = catalog.properties.find((p) => p.id === 'SP-030');
+    expect(sp30).toBeDefined();
+    expect(sp30?.propertyName).toBe('The Charlotte');
+    expect(sp30?.location).toBe('Kuching, Sarawak');
+    expect(sp30?.priceMYR).toBe(585000);
+  });
 });

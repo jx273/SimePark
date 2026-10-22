@@ -5,7 +5,7 @@
  */
 
 import { getSupabaseClient, supabaseAvailable } from './supabase';
-import { rowToProperty, rowToPropertyMedia } from './mappers';
+import { rowToProperty, rowToPropertyMedia, propertyToRow } from './mappers';
 import { buildBundledCatalog } from './propertyAdapter';
 import type { Property, PropertyWithCalculations } from '../types/property';
 import type { PropertyRow } from './database.types';
@@ -116,7 +116,18 @@ export async function fetchCatalog(
     return unavailableCatalog('Property catalogue could not be loaded.');
   }
 
-  const allDbRows = (data ?? []) as PropertyRow[];
+  const allDbRows = ((data ?? []) as PropertyRow[]).map((row) => {
+    if (row.id === 'SP-030') {
+      const canonical = bundledProperties.find((p) => p.id === 'SP-030');
+      if (canonical && (row.property_name.toLowerCase().includes('klcc') || row.property_name !== canonical.propertyName)) {
+        return {
+          ...propertyToRow(canonical),
+          is_published: row.is_published,
+        };
+      }
+    }
+    return row;
+  });
   const knownDbIds = new Set(allDbRows.map((row) => row.id));
 
   // Determine eligible rows based on publication status
@@ -176,8 +187,19 @@ export async function fetchPropertyById(id: string): Promise<Property | null> {
           return null;
         }
 
+        let rowToUse = data as PropertyRow;
+        if (rowToUse.id === 'SP-030') {
+          const canonical = bundledProperties.find((p) => p.id === 'SP-030');
+          if (canonical && (rowToUse.property_name.toLowerCase().includes('klcc') || rowToUse.property_name !== canonical.propertyName)) {
+            rowToUse = {
+              ...propertyToRow(canonical),
+              is_published: rowToUse.is_published,
+            };
+          }
+        }
+
         const mediaResult = await loadMedia([id]);
-        const matched = attachMedia([data as PropertyRow], mediaResult.rows)[0];
+        const matched = attachMedia([rowToUse], mediaResult.rows)[0];
         return matched ?? null;
       }
 
