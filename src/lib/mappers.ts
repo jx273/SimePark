@@ -248,7 +248,7 @@ export function propertyToInsert(
     confidence_status: nullableText(property.confidenceStatus),
     image_permission: nullableText(property.imagePermission),
     notes: nullableText(property.notes),
-    is_example: property.isExample,
+    is_example: property.verifiedDate ? false : Boolean(property.isExample),
     is_published: property.isPublished,
     created_by: createdBy,
   };
@@ -358,7 +358,7 @@ export function formToUpdate(form: AdminPropertyForm): PropertyUpdate {
     confidence_status: nullableText(form.confidenceStatus),
     image_permission: nullableText(form.imagePermission),
     notes: nullableText(form.notes),
-    is_example: form.isExample,
+    is_example: form.verifiedDate?.trim() ? false : Boolean(form.isExample),
     is_published: form.isPublished,
   };
 }

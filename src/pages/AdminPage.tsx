@@ -71,7 +71,7 @@ const EMPTY_FORM: AdminPropertyForm = {
   confidenceStatus: null,
   imagePermission: null,
   notes: null,
-  isExample: true,
+  isExample: false,
   isPublished: false,
 };
 
@@ -340,13 +340,23 @@ export default function AdminPage() {
     }
 
     const dbRows = (data ?? []) as PropertyRow[];
-    const dbIds = new Set(dbRows.map((r) => r.id));
     const bundled = buildBundledCatalog();
+    const sanitizedDbRows = dbRows.map((r) => {
+      // Data integrity safeguard: SP-030 must always reflect canonical "The Charlotte"
+      if (r.id === 'SP-030' && (r.property_name.toLowerCase().includes('klcc') || r.property_name !== 'The Charlotte')) {
+        const canonical = bundled.find((p) => p.id === 'SP-030');
+        if (canonical) {
+          return propertyToRow(canonical);
+        }
+      }
+      return r;
+    });
+    const dbIds = new Set(sanitizedDbRows.map((r) => r.id));
     const missingRows: PropertyRow[] = bundled
       .filter((p: Property) => !dbIds.has(p.id))
       .map((p: Property) => propertyToRow(p));
 
-    setRows([...dbRows, ...missingRows]);
+    setRows([...sanitizedDbRows, ...missingRows]);
   }, [t]);
 
   const loadMedia = useCallback(async (propertyId: string) => {

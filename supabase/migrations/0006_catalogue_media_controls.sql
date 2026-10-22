@@ -39,6 +39,11 @@ set source_kind = case when m.storage_path is not null then 'upload' else 'exter
 from public.properties p
 where p.id = m.property_id;
 
+-- Ensure any legacy or seed rows with a verified_date cannot violate properties_example_not_verified
+update public.properties
+set is_example = false
+where is_example and verified_date is not null;
+
 create temporary table _simepark_source_records (payload jsonb not null);
 insert into _simepark_source_records (payload)
 select value from jsonb_array_elements($simepark_source$[
@@ -1877,7 +1882,10 @@ with source_rows as (
     s.payload ->> 'confidenceStatus' as confidence_status,
     s.payload ->> 'imagePermission' as image_permission,
     s.payload ->> 'notes' as notes,
-    coalesce((s.payload ->> 'isExample')::boolean, false) as is_example,
+    case
+      when nullif(s.payload ->> 'verifiedDate', '') is not null then false
+      else coalesce((s.payload ->> 'isExample')::boolean, false)
+    end as is_example,
     true as is_published
   from _simepark_source_records s
 )
@@ -1968,6 +1976,10 @@ on conflict (id) do update set
   confidence_status = coalesce(excluded.confidence_status, existing.confidence_status),
   image_permission = coalesce(excluded.image_permission, existing.image_permission),
   notes = coalesce(excluded.notes, existing.notes),
+  is_example = case
+    when coalesce(excluded.verified_date, existing.verified_date) is not null then false
+    else coalesce(excluded.is_example, existing.is_example, false)
+  end,
   is_published = existing.is_published
 where (
   existing.property_name in ('Park View @ Taman Juru Setia', 'Bandar Putra Mak Lagam Kemaman', 'Cappella Embassy', 'Vogue Suites One')
