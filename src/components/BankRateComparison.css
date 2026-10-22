@@ -22,29 +22,117 @@
   font-size: var(--font-size-lg);
 }
 
-.bank-rates__table-wrap {
-  overflow-x: auto;
+/* ---------- Vertical View Cards & Layout ---------- */
+.bank-rates__panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
 }
 
-.bank-rates__table {
-  width: 100%;
-  border-collapse: collapse;
-  font-variant-numeric: tabular-nums;
+.bank-rates__panel-header h3 {
+  margin: 0;
 }
 
-.bank-rates__table th,
-.bank-rates__table td {
-  padding: var(--space-sm) var(--space-md);
-  border-bottom: 1px solid var(--color-border);
-  text-align: left;
-  vertical-align: top;
+.bank-rates__cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
 }
 
-.bank-rates__table th {
+.bank-rates__card {
+  padding: var(--space-lg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius);
+  background: var(--color-bg-card);
+  display: grid;
+  gap: var(--space-md);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.bank-rates__card:hover {
+  border-color: var(--color-primary-light, #93c5fd);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.bank-rates__card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-md);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--color-border-light, #f1f5f9);
+}
+
+.bank-rates__card-title {
+  margin: 0 0 var(--space-xs);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+}
+
+.bank-rates__card-rate {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.bank-rates__rate-val {
+  display: block;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
+  line-height: 1.1;
+}
+
+.bank-rates__rate-lbl {
   font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.bank-rates__card-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: var(--space-md);
+}
+
+.bank-rates__metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bank-rates__metric-label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
+}
+
+.bank-rates__metric-value {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+}
+
+.bank-rates__diff-baseline {
   color: var(--color-text-muted);
+}
+
+.bank-rates__diff-save {
+  color: #2E7D32;
+  font-weight: 600;
+}
+
+.bank-rates__diff-more {
+  color: var(--brand-red, #dc2626);
+  font-weight: 600;
+}
+
+.bank-rates__card-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--space-xs);
 }
 
 @media (max-width: 900px) {

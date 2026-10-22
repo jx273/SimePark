@@ -11,10 +11,11 @@
  * given a placeholder.
  */
 
-import type { Property, PropertyType } from '../types/property';
+import type { Property, PropertyTranslation, PropertyType } from '../types/property';
 import type { AffordabilityInputs } from '../types/affordability';
 import { parseAmenities, parseFacilities } from './propertyAdapter';
 import type {
+  Json,
   PropertyInsert,
   PropertyMediaRow,
   PropertyRow,
@@ -99,6 +100,7 @@ export function rowToProperty(row: PropertyRow): Property | null {
     isPublished: row.is_published,
     isExample: row.is_example,
     media: [],
+    translations: (row.translations as Property['translations']) ?? undefined,
   };
 }
 
@@ -195,6 +197,7 @@ export function propertyToRow(property: Property): PropertyRow {
     notes: property.notes ?? null,
     is_example: property.isExample ?? false,
     is_published: property.isPublished ?? true,
+    translations: property.translations ? (property.translations as Json) : null,
     created_by: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -250,6 +253,7 @@ export function propertyToInsert(
     notes: nullableText(property.notes),
     is_example: property.verifiedDate ? false : Boolean(property.isExample),
     is_published: property.isPublished,
+    translations: property.translations ? (property.translations as Json) : null,
     created_by: createdBy,
   };
 }
@@ -306,6 +310,7 @@ export function rowToAdminForm(row: PropertyRow) {
     notes: row.notes,
     isExample: row.is_example,
     isPublished: row.is_published,
+    translations: (row.translations as Property['translations']) ?? undefined,
   };
 }
 
@@ -360,6 +365,7 @@ export function formToUpdate(form: AdminPropertyForm): PropertyUpdate {
     notes: nullableText(form.notes),
     is_example: form.verifiedDate?.trim() ? false : Boolean(form.isExample),
     is_published: form.isPublished,
+    translations: form.translations ? (form.translations as Json) : null,
   };
 }
 

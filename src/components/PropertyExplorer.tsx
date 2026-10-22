@@ -389,8 +389,8 @@ export default function PropertyExplorer({
                   <strong>{t('explorer.facilities')}</strong>
                   <span className="explorer__facility-trigger-count">
                     {filters.facilities.length > 0
-                      ? `(${filters.facilities.length} selected)`
-                      : '(Select all and apply)'}
+                      ? t('explorer.countSelected', { count: filters.facilities.length })
+                      : t('explorer.selectAllAndApply')}
                   </span>
                 </span>
                 <span className="explorer__facility-chevron" aria-hidden="true">▾</span>
@@ -403,7 +403,7 @@ export default function PropertyExplorer({
                       className="btn btn--secondary btn--sm"
                       onClick={() => setFilters((current) => ({ ...current, facilities: [...facilities] }))}
                     >
-                      ✓ Select All
+                      ✓ {t('explorer.selectAll')}
                     </button>
                     {filters.facilities.length > 0 && (
                       <button
@@ -416,7 +416,10 @@ export default function PropertyExplorer({
                     )}
                   </div>
                   <span className="explorer__facility-count-badge">
-                    {filters.facilities.length} of {facilities.length} selected
+                    {t('explorer.selectedOfTotal', {
+                      selected: filters.facilities.length,
+                      total: facilities.length,
+                    })}
                   </span>
                 </div>
                 <div className="explorer__facility-list" role="group" aria-label={t('explorer.facilities')}>
@@ -448,7 +451,7 @@ export default function PropertyExplorer({
                       }
                     }}
                   >
-                    Apply
+                    {t('explorer.apply')}
                   </button>
                 </div>
               </div>

@@ -77,7 +77,8 @@ export function toUncalculatedProperties(properties: Property[]): PropertyWithCa
 export function enrichPropertiesWithCalculations(
   properties: Property[],
   inputs: AffordabilityInputs,
-  result: AffordabilityResult
+  result: AffordabilityResult,
+  lang?: string | null
 ): PropertyWithCalculations[] {
   const safeInputs = sanitizeAffordabilityInputs(inputs);
 
@@ -145,7 +146,8 @@ export function enrichPropertiesWithCalculations(
       estimatedDSR,
       isAffordable,
       isWithinMortgageBudget,
-      hasEnoughDownPayment
+      hasEnoughDownPayment,
+      lang
     );
 
     return {
@@ -273,10 +275,100 @@ function generateMatchExplanation(
   estimatedDSR: number,
   isAffordable: boolean,
   isWithinMortgageBudget: boolean,
-  hasEnoughDownPayment: boolean
+  hasEnoughDownPayment: boolean,
+  lang?: string | null
 ): string {
+  const norm = lang?.toLowerCase().startsWith('zh')
+    ? 'zh'
+    : lang?.toLowerCase().startsWith('ms')
+    ? 'ms'
+    : 'en';
+
   const reasons: string[] = [];
 
+  if (norm === 'zh') {
+    if (isAffordable) {
+      reasons.push('此房产符合您的预估预算。');
+    }
+
+    if (isWithinMortgageBudget) {
+      const budgetUsage =
+        result.estimatedMortgageBudget > 0
+          ? Math.round((estimatedMonthlyMortgage / result.estimatedMortgageBudget) * 100)
+          : 0;
+      reasons.push(`预估月供约占您每月房贷预算的 ${budgetUsage}%。`);
+    } else {
+      reasons.push('预估月供超出了您计算的每月预算。');
+    }
+
+    if (!hasEnoughDownPayment) {
+      reasons.push(
+        `首付款差额：约 RM ${Math.round(cashShortfall).toLocaleString('en-MY')} ` +
+          `(您有 RM ${Math.round(inputs.downPayment).toLocaleString('en-MY')}，` +
+          `此价格需要 RM ${Math.round(requiredDownPayment).toLocaleString('en-MY')})。`
+      );
+    } else {
+      reasons.push('您现有的可用现金足以支付所需的首付款。');
+    }
+
+    if (compareLocation(property.location, inputs.preferredLocation) === 'match') {
+      reasons.push('位于您的首选区域。');
+    }
+
+    if (inputs.minBedrooms && property.bedrooms !== null) {
+      if (property.bedrooms >= inputs.minBedrooms) {
+        reasons.push(`满足您 ${inputs.minBedrooms}+ 间卧室的要求。`);
+      } else {
+        reasons.push(`拥有 ${property.bedrooms} 间卧室，低于您要求的最低 ${inputs.minBedrooms} 间。`);
+      }
+    }
+
+    reasons.push(`此房产的预估 DSR：${estimatedDSR.toFixed(1)}%。`);
+    return reasons.join(' ');
+  }
+
+  if (norm === 'ms') {
+    if (isAffordable) {
+      reasons.push('Hartanah ini berada dalam anggaran bajet anda.');
+    }
+
+    if (isWithinMortgageBudget) {
+      const budgetUsage =
+        result.estimatedMortgageBudget > 0
+          ? Math.round((estimatedMonthlyMortgage / result.estimatedMortgageBudget) * 100)
+          : 0;
+      reasons.push(`Anggaran ansuran menggunakan ~${budgetUsage}% daripada bajet pinjaman bulanan anda.`);
+    } else {
+      reasons.push('Anggaran ansuran melebihi bajet bulanan yang dikira.');
+    }
+
+    if (!hasEnoughDownPayment) {
+      reasons.push(
+        `Kekurangan wang pendahuluan: ~RM ${Math.round(cashShortfall).toLocaleString('en-MY')} ` +
+          `(anda mempunyai RM ${Math.round(inputs.downPayment).toLocaleString('en-MY')}, ` +
+          `harga ini memerlukan RM ${Math.round(requiredDownPayment).toLocaleString('en-MY')}).`
+      );
+    } else {
+      reasons.push('Tunai anda yang tersedia mencukupi untuk bayaran pendahuluan yang diperlukan.');
+    }
+
+    if (compareLocation(property.location, inputs.preferredLocation) === 'match') {
+      reasons.push('Terletak di kawasan pilihan anda.');
+    }
+
+    if (inputs.minBedrooms && property.bedrooms !== null) {
+      if (property.bedrooms >= inputs.minBedrooms) {
+        reasons.push(`Memenuhi keperluan ${inputs.minBedrooms}+ bilik tidur anda.`);
+      } else {
+        reasons.push(`Mempunyai ${property.bedrooms} bilik tidur, di bawah minimum ${inputs.minBedrooms} yang anda minta.`);
+      }
+    }
+
+    reasons.push(`Anggaran DSR dengan hartanah ini: ${estimatedDSR.toFixed(1)}%.`);
+    return reasons.join(' ');
+  }
+
+  // English (default)
   if (isAffordable) {
     reasons.push('This property is within your estimated budget.');
   }
