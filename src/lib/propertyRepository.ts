@@ -92,32 +92,53 @@ export async function fetchCatalog(
   options: { includeUnpublished?: boolean } = {}
 ): Promise<CatalogResult> {
   const client = await getSupabaseClient();
-  if (!client) return bundledCatalog();
-
-  let query = client.from('properties').select('*').order('price_myr', {
-    ascending: true,
-    nullsFirst: false,
-  });
-
-  if (!options.includeUnpublished) query = query.eq('is_published', true);
-
-  const { data, error } = await query;
-  if (error || !data) {
-    // If the database cannot be reached, fallback gracefully to the complete bundled catalog
-    return bundledCatalog();
+  if (!client) {
+    const list = options.includeUnpublished
+      ? bundledProperties
+      : bundledProperties.filter((p) => p.isPublished);
+    return {
+      properties: list,
+      unpriced: list.filter((property) => property.priceMYR === null).length,
+      source: 'bundled-source',
+    };
   }
 
-  const currentRows = filterPublicCatalogueRows(data);
+  const { data, error } = await client
+    .from('properties')
+    .select('*')
+    .order('price_myr', {
+      ascending: true,
+      nullsFirst: false,
+    });
+
+  if (error || !data) {
+    // Database failure: return error state safely without leaking unpublished properties
+    return unavailableCatalog('Property catalogue could not be loaded.');
+  }
+
+  const allDbRows = (data ?? []) as PropertyRow[];
+  const knownDbIds = new Set(allDbRows.map((row) => row.id));
+
+  // Determine eligible rows based on publication status
+  const eligibleRows = options.includeUnpublished
+    ? allDbRows
+    : allDbRows.filter((row) => row.is_published);
+
+  const currentRows = filterPublicCatalogueRows(eligibleRows);
   const mediaResult = await loadMedia(currentRows.map((row) => row.id));
   const dbProperties = attachMedia(currentRows as PropertyRow[], mediaResult.rows);
-  const dbIds = new Set(dbProperties.map((p) => p.id));
 
-  // Merge so all 30 properties from the complete source dataset are present.
-  // Database records take precedence over bundled source records.
-  const allProperties = [
-    ...dbProperties,
-    ...bundledProperties.filter((p) => !dbIds.has(p.id) && (options.includeUnpublished || p.isPublished)),
-  ];
+  // Fallback for legitimate demo properties or unmigrated source records not in database.
+  // CRITICAL: If a property exists in the database, its database publication status is final.
+  // It must NEVER be revived through fallback data if unpublished in the database.
+  const missingProperties = bundledProperties.filter((p) => {
+    if (knownDbIds.has(p.id)) {
+      return false;
+    }
+    return options.includeUnpublished || p.isPublished;
+  });
+
+  const allProperties = [...dbProperties, ...missingProperties];
 
   return {
     properties: allProperties,
@@ -135,21 +156,49 @@ export async function fetchPropertyById(id: string): Promise<Property | null> {
         .from('properties')
         .select('*')
         .eq('id', id)
-        .eq('is_published', true)
-        .eq('is_example', false)
         .maybeSingle();
 
-      if (!error && data && (data.price_myr === null || Number(data.price_myr) > 0)) {
+      if (error) {
+        // Database failure: return null safely; do not fall back and expose unpublished properties
+        return null;
+      }
+
+      if (data) {
+        // Authoritative record in database
+        if (!data.is_published) {
+          // Explicitly unpublished in database: keep hidden
+          return null;
+        }
+        if (data.is_example) {
+          return null;
+        }
+        if (data.price_myr !== null && !(Number(data.price_myr) > 0)) {
+          return null;
+        }
+
         const mediaResult = await loadMedia([id]);
         const matched = attachMedia([data as PropertyRow], mediaResult.rows)[0];
-        if (matched) return matched;
+        return matched ?? null;
       }
+
+      // Record does not exist in the database at all: check legitimate demo / bundled records
+      const bundled = bundledProperties.find((property) => property.id === id);
+      if (bundled && bundled.isPublished && !bundled.isExample) {
+        return bundled;
+      }
+      return null;
     } catch {
-      // Fall through to bundled properties on any network or database issue
+      // Catch unexpected errors and fail safe
+      return null;
     }
   }
 
-  return bundledProperties.find((property) => property.id === id) ?? null;
+  // Supabase not configured: local bundled mode
+  const bundled = bundledProperties.find((property) => property.id === id);
+  if (bundled && bundled.isPublished && !bundled.isExample) {
+    return bundled;
+  }
+  return null;
 }
 
 export function toUncalculatedCatalog(properties: Property[]): PropertyWithCalculations[] {

@@ -43,27 +43,58 @@ describe('authoritative property source adapter', () => {
     expect(videoProperty.media?.filter((item) => item.kind === 'video')).toHaveLength(1);
     expect(vogue.media?.every((item) => item.sourceKind === 'external' && item.storagePath === null)).toBe(true);
     expect(vogue.media?.every((item) => item.permissionStatus === 'unknown')).toBe(true);
+    // Built-in media with unknown permission is displayed with attribution for the hackathon demo
     expect(vogue.media?.every((item) => isPubliclyDisplayableMedia(item))).toBe(true);
   });
 
-  it('rejects unsafe media links and suppresses restricted media', () => {
+  it('displays supplied images while suppressing restricted media and unsafe URLs', () => {
     const photo = properties[0].media![0];
     expect(isSafeMediaUrl('https://example.com/image.jpg')).toBe(true);
     expect(isSafeMediaUrl('javascript:alert(1)')).toBe(false);
+
+    // Permitted and unknown states: displayed with attribution
     expect(isPubliclyDisplayableMedia({
       ...photo,
       permissionStatus: 'unknown',
       visibility: 'public',
+      url: 'https://example.com/photo.jpg',
     })).toBe(true);
+    expect(isPubliclyDisplayableMedia({
+      ...photo,
+      permissionStatus: 'confirmed',
+      visibility: 'public',
+      url: 'https://example.com/photo.jpg',
+    })).toBe(true);
+    expect(isPubliclyDisplayableMedia({
+      ...photo,
+      permissionStatus: 'granted',
+      visibility: 'public',
+      url: 'https://example.com/photo.jpg',
+    })).toBe(true);
+
+    // Unauthorized/restricted states: must be suppressed
     expect(isPubliclyDisplayableMedia({
       ...photo,
       permissionStatus: 'restricted',
       visibility: 'public',
+      url: 'https://example.com/photo.jpg',
     })).toBe(false);
+
+    // Visibility internal: must NOT be displayed
     expect(isPubliclyDisplayableMedia({
       ...photo,
       permissionStatus: 'confirmed',
       visibility: 'internal',
+      url: 'https://example.com/photo.jpg',
+    })).toBe(false);
+
+    // Unsafe URL: must NOT be displayed even if confirmed and public
+    expect(isPubliclyDisplayableMedia({
+      ...photo,
+      permissionStatus: 'confirmed',
+      visibility: 'public',
+      url: 'javascript:alert(1)',
+      externalUrl: 'javascript:alert(1)',
     })).toBe(false);
   });
 
@@ -99,6 +130,23 @@ describe('authoritative property source adapter', () => {
         (amenity.distanceKm === null || (Number.isFinite(amenity.distanceKm) && amenity.distanceKm >= 0))
       )).toBe(true);
     }
+  });
+
+  it('verifies canonical SP-030 record exactly matches The Charlotte from canonical JSON', () => {
+    const sp30 = properties.find((p) => p.id === 'SP-030')!;
+    expect(sp30).toBeDefined();
+    expect(sp30.propertyName).toBe('The Charlotte');
+    expect(sp30.location).toBe('Kuching, Sarawak');
+    expect(sp30.priceMYR).toBe(585000);
+    expect(sp30.propertyType).toBe('Condominium');
+    expect(sp30.bedrooms).toBe(2);
+    expect(sp30.bathrooms).toBe(2);
+    expect(sp30.builtUpSqft).toBe(1127);
+    expect(sp30.tenure).toBe('Leasehold');
+    expect(sp30.completionDate).toBe('2027');
+    expect(sp30.sourceUrl).toContain('sale-502127955');
+    expect(sp30.media?.filter((m) => m.kind === 'photo')).toHaveLength(15);
+    expect(sp30.media?.filter((m) => m.kind === 'floorplan')).toHaveLength(8);
   });
 
   it('leaves budget-dependent values uncalculated until the user submits inputs', () => {

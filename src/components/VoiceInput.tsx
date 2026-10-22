@@ -20,7 +20,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { normalizeLanguage } from '../i18n';
 import './VoiceInput.css';
 
 /* ---------------------------------------------------------------- */
@@ -85,24 +84,23 @@ export function isSpeechRecognitionSupported(): boolean {
   return getSpeechRecognition() !== null;
 }
 
-/** Voice languages offered, per the agreed scope. */
+/** Voice languages supported. SpeechRecognition supports en-MY, ms-MY, and zh-CN. */
 export const VOICE_LANGUAGES = [
   { code: 'en', tag: 'en-MY', label: 'English' },
   { code: 'ms', tag: 'ms-MY', label: 'Bahasa Melayu' },
+  { code: 'zh', tag: 'zh-CN', label: '中文' },
 ] as const;
 
 export type VoiceLanguageCode = (typeof VOICE_LANGUAGES)[number]['code'];
 
 /**
- * BCP-47 tag passed to SpeechRecognition for a chosen voice language.
- *
- * Chinese is deliberately not offered for voice: the agreed scope is English and
- * Malay. A Chinese UI therefore starts on English recognition rather than
- * pretending Chinese is supported.
+ * BCP-47 tag passed to SpeechRecognition. Automatically reflects the active language:
+ * English -> 'en-MY', Malay -> 'ms-MY', Chinese -> 'zh-CN'.
  */
-export function recognitionTagFor(chosen: VoiceLanguageCode): string {
-  const entry = VOICE_LANGUAGES.find((language) => language.code === chosen);
-  return entry?.tag ?? 'en-MY';
+export function recognitionTagFor(chosen: string): string {
+  if (chosen.startsWith('zh')) return 'zh-CN';
+  if (chosen.startsWith('ms')) return 'ms-MY';
+  return 'en-MY';
 }
 
 /** Stable key for a recognition error, translated by the UI. */
@@ -127,12 +125,6 @@ export default function VoiceInput({ onTranscript, disabled = false }: VoiceInpu
   const [supported, setSupported] = useState(false);
   const [listening, setListening] = useState(false);
   const [errorKey, setErrorKey] = useState<VoiceErrorKey | null>(null);
-
-  // Default the recognition language to the UI language when it is one we offer.
-  const uiLanguage = normalizeLanguage(i18n.language) ?? 'en';
-  const [language, setLanguage] = useState<VoiceLanguageCode>(
-    uiLanguage === 'ms' ? 'ms' : 'en'
-  );
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
@@ -172,7 +164,7 @@ export default function VoiceInput({ onTranscript, disabled = false }: VoiceInpu
     setErrorKey(null);
 
     const recognition = new Recognition();
-    recognition.lang = recognitionTagFor(language);
+    recognition.lang = recognitionTagFor(i18n.language);
     recognition.continuous = false;
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
@@ -210,7 +202,7 @@ export default function VoiceInput({ onTranscript, disabled = false }: VoiceInpu
       setListening(false);
       setErrorKey('error');
     }
-  }, [language, onTranscript]);
+  }, [i18n.language, onTranscript]);
 
   const errorMessage = useMemo(() => {
     if (!errorKey) return null;
@@ -240,22 +232,6 @@ export default function VoiceInput({ onTranscript, disabled = false }: VoiceInpu
           <span aria-hidden="true">{listening ? '■' : '🎙'}</span>
           <span>{listening ? t('voice.stop') : t('voice.start')}</span>
         </button>
-
-        <label className="voice__language">
-          <span className="sr-only">{t('voice.languageLabel')}</span>
-          <select
-            className="voice__select"
-            value={language}
-            onChange={(event) => setLanguage(event.target.value as VoiceLanguageCode)}
-            disabled={listening || disabled}
-          >
-            {VOICE_LANGUAGES.map((option) => (
-              <option key={option.code} value={option.code}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
       </div>
 
       {/* A text indicator as well as the pulsing dot, so the state is never

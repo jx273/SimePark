@@ -199,7 +199,9 @@ export function isPubliclyDisplayableMedia(
   }
 
   const permission = media.permissionStatus?.toLowerCase();
-  // Do not require manual approval; only suppress if explicitly restricted
+  // Do not hide supplied images solely because their permission metadata is marked as unknown.
+  // For this hackathon demo, the provided dataset is intended to display its supplied images,
+  // with source attribution visible to users. Suppress only if explicitly restricted.
   if (permission === 'restricted') {
     return false;
   }
@@ -254,8 +256,8 @@ function sourceMedia(
         altText: null,
         isCover: kind === 'photo' && index === 0,
         sortOrder: index + 1,
-        attribution: null,
-        permissionStatus: asStringOrNull(record.imagePermission),
+        attribution: asStringOrNull(record.sourceName) ?? 'Source listing',
+        permissionStatus: asStringOrNull(record.imagePermission) ?? 'unknown',
         watermarkStatus: 'not_applied' as const,
         adminNotes: null,
         watermarkedUrl: null,

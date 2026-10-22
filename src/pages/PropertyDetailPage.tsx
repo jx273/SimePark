@@ -547,7 +547,7 @@ export default function PropertyDetailPage({
                 {rawProperty.transitDistanceKm != null && rawProperty.transitTravelTimeMin != null && ' · '}
                 {rawProperty.transitTravelTimeMin != null && `${t('detail.reportedTravelTime')}: ${rawProperty.transitTravelTimeMin} min`}
                 {(rawProperty.transitDistanceKm != null || rawProperty.transitTravelTimeMin != null) &&
-                  ` · ${rawProperty.transitMode ?? t('detail.routeTypeUnknown')}`}
+                  rawProperty.transitMode && ` · ${rawProperty.transitMode}`}
               </p>
           </section>
         )}
@@ -564,13 +564,9 @@ export default function PropertyDetailPage({
                     <span className="detail__amenity-icon" aria-hidden="true">{cat.icon}</span>
                     <div className="detail__amenity-body">
                       <span className="detail__amenity-name">{amenity.name}</span>
-                      {amenity.distanceKm != null ? (
+                      {amenity.distanceKm != null && (
                         <span className="detail__amenity-distance-badge">
                           {t('detail.reportedDistance')}: {amenity.distanceKm} km
-                        </span>
-                      ) : (
-                        <span className="detail__amenity-distance-badge detail__amenity-distance-badge--general">
-                          {t('detail.routeTypeUnknown')}
                         </span>
                       )}
                     </div>

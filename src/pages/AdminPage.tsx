@@ -114,6 +114,47 @@ function nullableNumber(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+export interface AmenityItem {
+  id: string;
+  name: string;
+  distanceKm: string;
+}
+
+export function parseAmenityString(raw: string | null | undefined): AmenityItem[] {
+  if (!raw || !raw.trim()) return [];
+  const parts = raw.split(/[;；]/).map((p) => p.trim()).filter(Boolean);
+  return parts.map((part, index) => {
+    const match = part.match(/\(?\s*(-?\d+(?:\.\d+)?)\s*km\s*\)?/i);
+    if (match) {
+      const distance = match[1];
+      const name = part.replace(match[0], '').replace(/\s+/g, ' ').trim();
+      return { id: `amenity-${index}-${Date.now()}-${Math.random()}`, name: name || part, distanceKm: distance };
+    }
+    return { id: `amenity-${index}-${Date.now()}-${Math.random()}`, name: part, distanceKm: '' };
+  });
+}
+
+export function formatAmenityString(items: AmenityItem[]): string {
+  return items
+    .map((item) => {
+      const name = item.name.trim();
+      if (!name) return '';
+      const dist = item.distanceKm.trim();
+      return dist ? `${name} (${dist}km)` : name;
+    })
+    .filter(Boolean)
+    .join('; ');
+}
+
+export function parseFacilitiesText(text: string): string[] {
+  if (!text) return [];
+  const items = text
+    .split(/[;\n]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return Array.from(new Set(items));
+}
+
 /**
  * Administrator property management.
  *
@@ -130,6 +171,11 @@ export default function AdminPage() {
   const [rows, setRows] = useState<PropertyRow[]>([]);
   const [media, setMedia] = useState<PropertyMediaRow[]>([]);
   const [form, setForm] = useState<AdminPropertyForm>(EMPTY_FORM);
+  const [facilitiesText, setFacilitiesText] = useState('');
+  const [amenitiesList, setAmenitiesList] = useState<AmenityItem[]>([]);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [touchedFields, setTouchedFields] = useState<Set<string>>(new Set());
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mediaKind, setMediaKind] = useState<'photo' | 'floorplan' | 'video'>('photo');
   const [mediaCaption, setMediaCaption] = useState('');
@@ -150,6 +196,42 @@ export default function AdminPage() {
   const [catalogueFilter, setCatalogueFilter] = useState<'all' | 'published' | 'draft' | 'needsChecking'>('all');
   const [mediaTabFilter, setMediaTabFilter] = useState<'all' | 'photo' | 'floorplan' | 'video'>('all');
 
+  const addAmenity = () => {
+    setAmenitiesList((prev) => [
+      ...prev,
+      { id: `amenity-${Date.now()}-${Math.random()}`, name: '', distanceKm: '' },
+    ]);
+  };
+
+  const removeAmenity = (index: number) => {
+    setAmenitiesList((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const updateAmenity = (index: number, key: 'name' | 'distanceKm', value: string) => {
+    setAmenitiesList((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, [key]: value } : item))
+    );
+  };
+
+  const startEditProperty = (adminForm: AdminPropertyForm, isEdit = true) => {
+    setForm(adminForm);
+    setEditing(isEdit);
+    setFacilitiesText(adminForm.facilities.join('\n'));
+    setAmenitiesList(parseAmenityString(adminForm.nearbyAmenity));
+    setTouchedFields(new Set());
+    setFieldErrors({});
+    setHasAttemptedSubmit(false);
+  };
+
+  const resetToNewProperty = () => {
+    startEditProperty(EMPTY_FORM, false);
+    setMedia([]);
+  };
+
+  const handleBlur = (field: string) => {
+    setTouchedFields((prev) => new Set(prev).add(field));
+  };
+
   const textField = (
     key: TextFormKey,
     label: string,
@@ -157,27 +239,39 @@ export default function AdminPage() {
     helper = '',
     inputType = 'text',
     required = false
-  ) => (
-    <label className="form-group">
-      <span className="form-label">
-        {label}{' '}
-        <span className={required ? 'form-required' : 'form-optional'}>
-          ({required ? t('common.required') : t('common.optional')})
+  ) => {
+    const error = fieldErrors[key];
+    return (
+      <label className="form-group" htmlFor={`field-${key}`}>
+        <span className="form-label">
+          {label}{' '}
+          {required && (
+            <span className="form-required">
+              ({t('common.required')})
+            </span>
+          )}
         </span>
-      </span>
-      <input
-        type={inputType}
-        className="form-input"
-        placeholder={placeholder}
-        required={required}
-        value={form[key] ?? ''}
-        onChange={(event) =>
-          setForm((previous) => ({ ...previous, [key]: event.target.value || null }))
-        }
-      />
-      {helper && <span className="form-helper">{helper}</span>}
-    </label>
-  );
+        <input
+          id={`field-${key}`}
+          type={inputType}
+          className={`form-input ${error ? 'form-input--error' : ''}`}
+          placeholder={placeholder}
+          required={required}
+          value={form[key] ?? ''}
+          onChange={(event) =>
+            setForm((previous) => ({ ...previous, [key]: event.target.value || null }))
+          }
+          onBlur={() => handleBlur(key)}
+        />
+        {error && (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        )}
+        {helper && <span className="form-helper">{helper}</span>}
+      </label>
+    );
+  };
 
   const numberField = (
     key: NumberFormKey,
@@ -187,29 +281,41 @@ export default function AdminPage() {
     step = 'any',
     min = '0',
     required = false
-  ) => (
-    <label className="form-group">
-      <span className="form-label">
-        {label}{' '}
-        <span className={required ? 'form-required' : 'form-optional'}>
-          ({required ? t('common.required') : t('common.optional')})
+  ) => {
+    const error = fieldErrors[key];
+    return (
+      <label className="form-group" htmlFor={`field-${key}`}>
+        <span className="form-label">
+          {label}{' '}
+          {required && (
+            <span className="form-required">
+              ({t('common.required')})
+            </span>
+          )}
         </span>
-      </span>
-      <input
-        type="number"
-        className="form-input"
-        placeholder={placeholder}
-        min={min}
-        step={step}
-        required={required}
-        value={form[key] ?? ''}
-        onChange={(event) =>
-          setForm((previous) => ({ ...previous, [key]: nullableNumber(event.target.value) }))
-        }
-      />
-      {helper && <span className="form-helper">{helper}</span>}
-    </label>
-  );
+        <input
+          id={`field-${key}`}
+          type="number"
+          className={`form-input ${error ? 'form-input--error' : ''}`}
+          placeholder={placeholder}
+          min={min}
+          step={step}
+          required={required}
+          value={form[key] ?? ''}
+          onChange={(event) =>
+            setForm((previous) => ({ ...previous, [key]: nullableNumber(event.target.value) }))
+          }
+          onBlur={() => handleBlur(key)}
+        />
+        {error && (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        )}
+        {helper && <span className="form-helper">{helper}</span>}
+      </label>
+    );
+  };
 
   const loadRows = useCallback(async () => {
     setLoading(true);
@@ -542,42 +648,127 @@ export default function AdminPage() {
   }, [isAdmin, user, t]);
 
   const valid = useMemo(() => {
-    const errors: string[] = [];
-    if (!form.propertyName.trim()) errors.push(t('admin.validation.nameRequired'));
-    if (!form.location.trim()) errors.push(t('admin.validation.locationRequired'));
-    if (!editing && !/^[A-Za-z0-9-]{1,64}$/.test(form.id.trim())) {
-      errors.push(t('admin.validation.idInvalid'));
+    const errors: Record<string, string> = {};
+    const errorList: string[] = [];
+
+    // Required: id (when creating new)
+    if (!editing) {
+      const trimmedId = form.id.trim();
+      if (!trimmedId) {
+        errors.id = 'Property ID is required.';
+        errorList.push('Property ID is required.');
+      } else if (!/^[A-Za-z0-9-]{1,64}$/.test(trimmedId)) {
+        errors.id = t('admin.validation.idInvalid');
+        errorList.push(t('admin.validation.idInvalid'));
+      } else {
+        const isDuplicate =
+          rows.some((r) => r.id.trim().toLowerCase() === trimmedId.toLowerCase()) ||
+          buildBundledCatalog().some((p) => p.id.trim().toLowerCase() === trimmedId.toLowerCase());
+        if (isDuplicate) {
+          errors.id = 'This property ID already exists. Please use a unique ID.';
+          errorList.push('This property ID already exists. Please use a unique ID.');
+        }
+      }
     }
+
+    // Required: propertyName
+    const trimmedName = form.propertyName.trim();
+    if (!trimmedName) {
+      errors.propertyName = t('admin.validation.nameRequired');
+      errorList.push(t('admin.validation.nameRequired'));
+    } else if (trimmedName.length > 160) {
+      errors.propertyName = 'Property name cannot exceed 160 characters.';
+      errorList.push('Property name cannot exceed 160 characters.');
+    }
+
+    // Required: location
+    const trimmedLoc = form.location.trim();
+    if (!trimmedLoc) {
+      errors.location = t('admin.validation.locationRequired');
+      errorList.push(t('admin.validation.locationRequired'));
+    } else if (trimmedLoc.length > 200) {
+      errors.location = 'Location cannot exceed 200 characters.';
+      errorList.push('Location cannot exceed 200 characters.');
+    }
+
     if (form.priceMYR !== null && form.priceMYR <= 0) {
-      errors.push(t('admin.validation.priceInvalid'));
+      errors.priceMYR = t('admin.validation.priceInvalid');
+      errorList.push(t('admin.validation.priceInvalid'));
     }
     if (form.priceMinMYR !== null && form.priceMaxMYR !== null && form.priceMinMYR > form.priceMaxMYR) {
-      errors.push(t('admin.validation.priceRangeInvalid'));
+      errors.priceMinMYR = t('admin.validation.priceRangeInvalid');
+      errorList.push(t('admin.validation.priceRangeInvalid'));
     }
     if ((form.latitude === null) !== (form.longitude === null)) {
-      errors.push(t('admin.validation.coordinatePair'));
+      errors.latitude = t('admin.validation.coordinatePair');
+      errorList.push(t('admin.validation.coordinatePair'));
     }
     if (form.latitude !== null && (form.latitude < -90 || form.latitude > 90)) {
-      errors.push(t('admin.validation.latitudeInvalid'));
+      errors.latitude = t('admin.validation.latitudeInvalid');
+      errorList.push(t('admin.validation.latitudeInvalid'));
     }
     if (form.longitude !== null && (form.longitude < -180 || form.longitude > 180)) {
-      errors.push(t('admin.validation.longitudeInvalid'));
+      errors.longitude = t('admin.validation.longitudeInvalid');
+      errorList.push(t('admin.validation.longitudeInvalid'));
     }
     if (form.locationPrecision === 'verified' && form.latitude === null) {
-      errors.push(t('admin.validation.verifiedCoordinatesRequired'));
+      errors.latitude = t('admin.validation.verifiedCoordinatesRequired');
+      errorList.push(t('admin.validation.verifiedCoordinatesRequired'));
     }
-    if (form.sourceUrl && !/^https:\/\//i.test(form.sourceUrl)) {
-      errors.push(t('admin.validation.sourceUrlInvalid'));
+    if (form.sourceUrl && !/^https:\/\//i.test(form.sourceUrl.trim())) {
+      errors.sourceUrl = t('admin.validation.sourceUrlInvalid');
+      errorList.push(t('admin.validation.sourceUrlInvalid'));
     }
     if (form.verifiedDate && !/^\d{4}-\d{2}-\d{2}$/.test(form.verifiedDate)) {
-      errors.push(t('admin.validation.verifiedDateInvalid'));
+      errors.verifiedDate = t('admin.validation.verifiedDateInvalid');
+      errorList.push(t('admin.validation.verifiedDateInvalid'));
     }
-    // The database enforces this too; surfacing it here avoids a round trip.
     if (form.isExample && form.verifiedDate) {
-      errors.push(t('admin.fields.verifiedDateHelp'));
+      errors.verifiedDate = t('admin.fields.verifiedDateHelp');
+      errorList.push(t('admin.fields.verifiedDateHelp'));
     }
-    return { errors, isValid: errors.length === 0 };
-  }, [form, t]);
+
+    const fieldVisualOrder = [
+      'id',
+      'propertyName',
+      'location',
+      'priceMYR',
+      'priceMinMYR',
+      'priceMaxMYR',
+      'bedrooms',
+      'bathrooms',
+      'builtUpSqft',
+      'latitude',
+      'longitude',
+      'sourceUrl',
+      'verifiedDate',
+    ];
+    const firstInvalidField =
+      fieldVisualOrder.find((f) => f in errors) || Object.keys(errors)[0] || null;
+
+    return {
+      errors,
+      errorList,
+      firstInvalidField,
+      isValid: errorList.length === 0,
+    };
+  }, [form, editing, rows, t]);
+
+  useEffect(() => {
+    if (hasAttemptedSubmit) {
+      setFieldErrors(valid.errors);
+    } else if (touchedFields.size > 0) {
+      setFieldErrors((prev) => {
+        const next: Record<string, string> = {};
+        for (const key of touchedFields) {
+          if (valid.errors[key]) {
+            next[key] = valid.errors[key];
+          }
+        }
+        return next;
+      });
+    }
+  }, [valid, hasAttemptedSubmit, touchedFields]);
 
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
@@ -655,26 +846,64 @@ export default function AdminPage() {
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
+    setHasAttemptedSubmit(true);
+
     if (!valid.isValid) {
-      setStatus({ tone: 'error', text: valid.errors[0] });
+      setFieldErrors(valid.errors);
+      setStatus({ tone: 'error', text: valid.errorList[0] || t('admin.operationError') });
+      if (valid.firstInvalidField) {
+        setTimeout(() => {
+          const el = document.getElementById(`field-${valid.firstInvalidField}`);
+          el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el?.focus();
+        }, 50);
+      }
       return;
     }
 
     const client = await getSupabaseClient();
     if (!client) return;
 
-    const payload = formToUpdate(form);
+    const parsedFacilities = parseFacilitiesText(facilitiesText);
+    const serializedAmenity = formatAmenityString(amenitiesList);
+    const firstAmenityDistance = amenitiesList.find((a) => a.distanceKm.trim())?.distanceKm;
+    const computedAmenityDistance = firstAmenityDistance ? parseFloat(firstAmenityDistance) : form.amenityDistanceKm;
+
+    const updatedForm: AdminPropertyForm = {
+      ...form,
+      facilities: parsedFacilities,
+      nearbyAmenity: serializedAmenity || null,
+      amenityDistanceKm: computedAmenityDistance,
+    };
+
+    const payload = formToUpdate(updatedForm);
 
     const result = editing
       ? await client.from('properties').update(payload).eq('id', form.id).select('id')
       : await client
           .from('properties')
-          .insert(propertyToInsert(form, user?.id ?? null))
+          .insert(propertyToInsert(updatedForm, user?.id ?? null))
           .select('id');
 
     if (result.error) {
-      // RLS rejections land here. The message is deliberately generic so policy
-      // and column names are not disclosed.
+      if (
+        result.error.code === '23505' ||
+        result.error.message?.toLowerCase().includes('duplicate') ||
+        result.error.message?.toLowerCase().includes('unique')
+      ) {
+        setFieldErrors((prev) => ({
+          ...prev,
+          id: 'This property ID already exists. Please use a unique ID.',
+        }));
+        setStatus({
+          tone: 'error',
+          text: 'This property ID already exists. Please use a unique ID.',
+        });
+        const el = document.getElementById('field-id');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+        return;
+      }
       setStatus({ tone: 'error', text: t('admin.operationError') });
       return;
     }
@@ -685,8 +914,8 @@ export default function AdminPage() {
       .select('*')
       .eq('id', form.id)
       .maybeSingle();
-    setForm(savedRow ? rowToAdminForm(savedRow as PropertyRow) : form);
-    setEditing(true);
+    const finalForm = savedRow ? rowToAdminForm(savedRow as PropertyRow) : updatedForm;
+    startEditProperty(finalForm, true);
     await loadRows();
     await loadMedia(form.id);
   };
@@ -751,8 +980,7 @@ export default function AdminPage() {
   const selectPropertyForMedia = (propertyId: string) => {
     const row = rows.find((r) => r.id === propertyId);
     if (row) {
-      setForm(rowToAdminForm(row));
-      setEditing(true);
+      startEditProperty(rowToAdminForm(row), true);
       void loadMedia(row.id);
     }
   };
@@ -844,9 +1072,7 @@ export default function AdminPage() {
               type="button"
               className="btn btn--primary"
               onClick={() => {
-                setForm(EMPTY_FORM);
-                setEditing(false);
-                setMedia([]);
+                resetToNewProperty();
                 setActiveTab('editor');
               }}
             >
@@ -906,8 +1132,7 @@ export default function AdminPage() {
                             type="button"
                             className="btn btn--ghost btn--sm"
                             onClick={() => {
-                              setForm(adminForm);
-                              setEditing(true);
+                              startEditProperty(adminForm, true);
                               void loadMedia(row.id);
                               setActiveTab('editor');
                             }}
@@ -918,8 +1143,7 @@ export default function AdminPage() {
                             type="button"
                             className="btn btn--ghost btn--sm"
                             onClick={() => {
-                              setForm(adminForm);
-                              setEditing(true);
+                              startEditProperty(adminForm, true);
                               void loadMedia(row.id);
                               setActiveTab('media');
                             }}
@@ -948,9 +1172,7 @@ export default function AdminPage() {
               type="button"
               className="btn btn--primary"
               onClick={() => {
-                setForm(EMPTY_FORM);
-                setEditing(false);
-                setMedia([]);
+                resetToNewProperty();
                 setActiveTab('editor');
               }}
             >
@@ -1064,8 +1286,7 @@ export default function AdminPage() {
                             type="button"
                             className="btn btn--ghost btn--sm"
                             onClick={() => {
-                              setForm(adminForm);
-                              setEditing(true);
+                              startEditProperty(adminForm, true);
                               void loadMedia(row.id);
                               setActiveTab('editor');
                               window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1077,8 +1298,7 @@ export default function AdminPage() {
                             type="button"
                             className="btn btn--ghost btn--sm"
                             onClick={() => {
-                              setForm(adminForm);
-                              setEditing(true);
+                              startEditProperty(adminForm, true);
                               void loadMedia(row.id);
                               setActiveTab('media');
                               window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1139,13 +1359,14 @@ export default function AdminPage() {
               <h3 className="admin__editor-section-title">1. {t('admin.sectionIdentity')}</h3>
             </div>
             <div className="admin__grid">
-              <label className="form-group">
+              <label className="form-group" htmlFor="field-id">
                 <span className="form-label">
-                  {t('admin.fields.id')} <span className="form-required">({t('common.required')})</span>
+                  {t('admin.fields.id')} {!editing && <span className="form-required">({t('common.required')})</span>}
                 </span>
                 <input
+                  id="field-id"
                   type="text"
-                  className="form-input"
+                  className={`form-input ${fieldErrors.id ? 'form-input--error' : ''}`}
                   required={!editing}
                   disabled={editing}
                   pattern="[A-Za-z0-9-]{1,64}"
@@ -1155,17 +1376,24 @@ export default function AdminPage() {
                   onChange={(event) =>
                     setForm((previous) => ({ ...previous, id: event.target.value }))
                   }
+                  onBlur={() => handleBlur('id')}
                 />
+                {fieldErrors.id && (
+                  <p className="form-error" role="alert">
+                    {fieldErrors.id}
+                  </p>
+                )}
                 <span className="form-helper">{t('admin.fields.idHelp')}</span>
               </label>
 
-              <label className="form-group">
+              <label className="form-group" htmlFor="field-propertyName">
                 <span className="form-label">
                   {t('admin.fields.propertyName')} <span className="form-required">({t('common.required')})</span>
                 </span>
                 <input
+                  id="field-propertyName"
                   type="text"
-                  className="form-input"
+                  className={`form-input ${fieldErrors.propertyName ? 'form-input--error' : ''}`}
                   required
                   maxLength={160}
                   placeholder="e.g. Vogue Suites One"
@@ -1173,16 +1401,23 @@ export default function AdminPage() {
                   onChange={(event) =>
                     setForm((previous) => ({ ...previous, propertyName: event.target.value }))
                   }
+                  onBlur={() => handleBlur('propertyName')}
                 />
+                {fieldErrors.propertyName && (
+                  <p className="form-error" role="alert">
+                    {fieldErrors.propertyName}
+                  </p>
+                )}
               </label>
 
-              <label className="form-group">
+              <label className="form-group" htmlFor="field-location">
                 <span className="form-label">
                   {t('admin.fields.location')} <span className="form-required">({t('common.required')})</span>
                 </span>
                 <input
+                  id="field-location"
                   type="text"
-                  className="form-input"
+                  className={`form-input ${fieldErrors.location ? 'form-input--error' : ''}`}
                   required
                   maxLength={200}
                   placeholder="e.g. KL Eco City, Kuala Lumpur"
@@ -1190,16 +1425,21 @@ export default function AdminPage() {
                   onChange={(event) =>
                     setForm((previous) => ({ ...previous, location: event.target.value }))
                   }
+                  onBlur={() => handleBlur('location')}
                 />
+                {fieldErrors.location && (
+                  <p className="form-error" role="alert">
+                    {fieldErrors.location}
+                  </p>
+                )}
               </label>
 
-              <label className="form-group">
-                <span className="form-label">
-                  {t('admin.fields.priceMYR')} <span className="form-optional">({t('common.optional')})</span>
-                </span>
+              <label className="form-group" htmlFor="field-priceMYR">
+                <span className="form-label">{t('admin.fields.priceMYR')}</span>
                 <input
+                  id="field-priceMYR"
                   type="number"
-                  className="form-input"
+                  className={`form-input ${fieldErrors.priceMYR ? 'form-input--error' : ''}`}
                   min="1"
                   step="1000"
                   placeholder="e.g. 850000"
@@ -1210,7 +1450,13 @@ export default function AdminPage() {
                       priceMYR: nullableNumber(event.target.value),
                     }))
                   }
+                  onBlur={() => handleBlur('priceMYR')}
                 />
+                {fieldErrors.priceMYR && (
+                  <p className="form-error" role="alert">
+                    {fieldErrors.priceMYR}
+                  </p>
+                )}
                 <span className="form-helper">Full asking price in Ringgit Malaysia (RM).</span>
               </label>
 
@@ -1247,13 +1493,12 @@ export default function AdminPage() {
               <h3 className="admin__editor-section-title">2. {t('admin.sectionProperty')}</h3>
             </div>
             <div className="admin__grid">
-              <label className="form-group">
-                <span className="form-label">
-                  {t('admin.fields.bedrooms')} <span className="form-optional">({t('common.optional')})</span>
-                </span>
+              <label className="form-group" htmlFor="field-bedrooms">
+                <span className="form-label">{t('admin.fields.bedrooms')}</span>
                 <input
+                  id="field-bedrooms"
                   type="number"
-                  className="form-input"
+                  className={`form-input ${fieldErrors.bedrooms ? 'form-input--error' : ''}`}
                   min="0"
                   max="50"
                   placeholder="e.g. 2"
@@ -1261,16 +1506,21 @@ export default function AdminPage() {
                   onChange={(event) =>
                     setForm((previous) => ({ ...previous, bedrooms: nullableNumber(event.target.value) }))
                   }
+                  onBlur={() => handleBlur('bedrooms')}
                 />
+                {fieldErrors.bedrooms && (
+                  <p className="form-error" role="alert">
+                    {fieldErrors.bedrooms}
+                  </p>
+                )}
               </label>
 
-              <label className="form-group">
-                <span className="form-label">
-                  {t('admin.fields.bathrooms')} <span className="form-optional">({t('common.optional')})</span>
-                </span>
+              <label className="form-group" htmlFor="field-bathrooms">
+                <span className="form-label">{t('admin.fields.bathrooms')}</span>
                 <input
+                  id="field-bathrooms"
                   type="number"
-                  className="form-input"
+                  className={`form-input ${fieldErrors.bathrooms ? 'form-input--error' : ''}`}
                   min="0"
                   max="50"
                   placeholder="e.g. 2"
@@ -1278,16 +1528,21 @@ export default function AdminPage() {
                   onChange={(event) =>
                     setForm((previous) => ({ ...previous, bathrooms: nullableNumber(event.target.value) }))
                   }
+                  onBlur={() => handleBlur('bathrooms')}
                 />
+                {fieldErrors.bathrooms && (
+                  <p className="form-error" role="alert">
+                    {fieldErrors.bathrooms}
+                  </p>
+                )}
               </label>
 
-              <label className="form-group">
-                <span className="form-label">
-                  {t('admin.fields.builtUpSqft')} <span className="form-optional">({t('common.optional')})</span>
-                </span>
+              <label className="form-group" htmlFor="field-builtUpSqft">
+                <span className="form-label">{t('admin.fields.builtUpSqft')}</span>
                 <input
+                  id="field-builtUpSqft"
                   type="number"
-                  className="form-input"
+                  className={`form-input ${fieldErrors.builtUpSqft ? 'form-input--error' : ''}`}
                   min="1"
                   placeholder="e.g. 915"
                   value={form.builtUpSqft ?? ''}
@@ -1297,7 +1552,13 @@ export default function AdminPage() {
                       builtUpSqft: nullableNumber(event.target.value),
                     }))
                   }
+                  onBlur={() => handleBlur('builtUpSqft')}
                 />
+                {fieldErrors.builtUpSqft && (
+                  <p className="form-error" role="alert">
+                    {fieldErrors.builtUpSqft}
+                  </p>
+                )}
                 <span className="form-helper">Built-up floor area in square feet.</span>
               </label>
 
@@ -1354,10 +1615,52 @@ export default function AdminPage() {
               </label>
               {textField('nearestTransit', t('admin.fields.nearestTransit'), 'e.g. Abdullah Hukum LRT Station')}
               {numberField('transitDistanceKm', t('admin.fields.transitDistanceKm'), 'e.g. 0.35', 'Distance in kilometres', 'any', '0')}
-              {numberField('transitTravelTimeMin', t('admin.fields.transitTravelTimeMin'), 'e.g. 5', 'Reported minutes', '1', '0')}
+              {numberField('transitTravelTimeMin', t('admin.fields.transitTravelTimeMin'), 'e.g. 5', 'Estimated minutes', '1', '0')}
               {textField('transitMode', t('admin.fields.transitMode'), 'e.g. Walking or Transit Shuttle Bus')}
-              {textField('nearbyAmenity', t('admin.fields.nearbyAmenity'), 'e.g. Mid Valley Megamall (0.5km)', 'Key amenities from listing')}
-              {numberField('amenityDistanceKm', t('admin.fields.amenityDistanceKm'), 'e.g. 0.5', 'Distance in kilometres', 'any', '0')}
+
+              <div className="admin__repeatable-section admin__grid-wide">
+                <span className="form-label">{t('admin.fields.nearbyAmenity')}</span>
+                <span className="form-helper">Add nearby amenities with optional driving distances.</span>
+                <div className="admin__repeatable-list">
+                  {amenitiesList.map((item, index) => (
+                    <div key={item.id} className="admin__repeatable-row">
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="e.g. Mid Valley Megamall"
+                        value={item.name}
+                        onChange={(e) => updateAmenity(index, 'name', e.target.value)}
+                      />
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        className="form-input admin__repeatable-dist"
+                        placeholder="Distance (km) e.g. 0.5"
+                        value={item.distanceKm}
+                        onChange={(e) => updateAmenity(index, 'distanceKm', e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn--secondary btn--sm admin__repeatable-remove"
+                        onClick={() => removeAmenity(index)}
+                        aria-label="Remove amenity"
+                      >
+                        ✕ Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <button
+                    type="button"
+                    className="btn btn--secondary btn--sm mt-xs"
+                    onClick={addAmenity}
+                  >
+                    + Add another amenity
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1365,21 +1668,25 @@ export default function AdminPage() {
             <div className="admin__editor-section-header">
               <h3 className="admin__editor-section-title">4. {t('admin.sectionAmenities')}</h3>
             </div>
-            <label className="form-group admin__grid-wide">
+            <label className="form-group admin__grid-wide" htmlFor="field-facilities">
               <span className="form-label">{t('admin.fields.facilities')}</span>
               <textarea
-                className="form-input"
-                rows={3}
-                placeholder="e.g. Swimming Pool; Gymnasium; 24-Hour Security; Playground; BBQ Pit; Tennis Court"
-                value={form.facilities.join('; ')}
-                onChange={(event) =>
-                  setForm((previous) => ({
-                    ...previous,
-                    facilities: [...new Set(event.target.value.split(/[;\n]/).map((item) => item.trim()).filter(Boolean))],
-                  }))
-                }
+                id="field-facilities"
+                className={`form-input ${fieldErrors.facilities ? 'form-input--error' : ''}`}
+                rows={4}
+                placeholder="e.g. Swimming Pool; Gymnasium; 24-Hour Security; Playground; BBQ Pit; Tennis Court&#10;or one facility per line"
+                value={facilitiesText}
+                onChange={(event) => setFacilitiesText(event.target.value)}
+                onBlur={() => handleBlur('facilities')}
               />
-              <span className="form-helper">{t('admin.fields.facilitiesHelp')}</span>
+              {fieldErrors.facilities && (
+                <p className="form-error" role="alert">
+                  {fieldErrors.facilities}
+                </p>
+              )}
+              <span className="form-helper">
+                Accepts semicolon-separated entries or newline-separated entries (each facility on its own line).
+              </span>
             </label>
           </div>
 
@@ -1388,11 +1695,12 @@ export default function AdminPage() {
               <h3 className="admin__editor-section-title">5. {t('admin.sectionSource')}</h3>
             </div>
             <div className="admin__grid">
-              <label className="form-group admin__grid-wide">
+              <label className="form-group admin__grid-wide" htmlFor="field-sourceUrl">
                 <span className="form-label">{t('admin.fields.sourceUrl')}</span>
                 <input
+                  id="field-sourceUrl"
                   type="url"
-                  className="form-input"
+                  className={`form-input ${fieldErrors.sourceUrl ? 'form-input--error' : ''}`}
                   placeholder="https://www.iproperty.com.my/property/..."
                   value={form.sourceUrl ?? ''}
                   onChange={(event) =>
@@ -1401,7 +1709,13 @@ export default function AdminPage() {
                       sourceUrl: event.target.value.trim() === '' ? null : event.target.value,
                     }))
                   }
+                  onBlur={() => handleBlur('sourceUrl')}
                 />
+                {fieldErrors.sourceUrl && (
+                  <p className="form-error" role="alert">
+                    {fieldErrors.sourceUrl}
+                  </p>
+                )}
                 <span className="form-helper">{t('admin.fields.sourceUrlHelp')}</span>
               </label>
 
@@ -1429,11 +1743,12 @@ export default function AdminPage() {
                 <span className="form-helper">Internal source notes, discrepancy details, or caveats.</span>
               </label>
 
-              <label className="form-group">
+              <label className="form-group" htmlFor="field-verifiedDate">
                 <span className="form-label">{t('admin.fields.verifiedDate')}</span>
                 <input
+                  id="field-verifiedDate"
                   type="date"
-                  className="form-input"
+                  className={`form-input ${fieldErrors.verifiedDate ? 'form-input--error' : ''}`}
                   value={form.verifiedDate ?? ''}
                   onChange={(event) =>
                     setForm((previous) => ({
@@ -1441,7 +1756,13 @@ export default function AdminPage() {
                       verifiedDate: event.target.value === '' ? null : event.target.value,
                     }))
                   }
+                  onBlur={() => handleBlur('verifiedDate')}
                 />
+                {fieldErrors.verifiedDate && (
+                  <p className="form-error" role="alert">
+                    {fieldErrors.verifiedDate}
+                  </p>
+                )}
                 <span className="form-helper">{t('admin.fields.verifiedDateHelp')}</span>
               </label>
 
@@ -1473,9 +1794,9 @@ export default function AdminPage() {
             </div>
           </div>
 
-          {!valid.isValid && (
-            <ul className="admin__errors">
-              {valid.errors.map((error) => (
+          {hasAttemptedSubmit && !valid.isValid && (
+            <ul className="admin__errors" role="alert">
+              {valid.errorList.map((error) => (
                 <li key={error}>
                   <span aria-hidden="true">⚠ </span>
                   {error}
@@ -1485,16 +1806,14 @@ export default function AdminPage() {
           )}
 
           <div className="admin__form-actions">
-            <button type="submit" className="btn btn--primary" disabled={!valid.isValid}>
+            <button type="submit" className="btn btn--primary">
               {editing ? t('admin.update') : t('admin.create')}
             </button>
             <button
               type="button"
               className="btn btn--ghost"
               onClick={() => {
-                setForm(EMPTY_FORM);
-                setEditing(false);
-                setMedia([]);
+                resetToNewProperty();
                 setActiveTab('catalogue');
               }}
             >

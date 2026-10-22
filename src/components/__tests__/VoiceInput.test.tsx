@@ -57,13 +57,14 @@ describe('speech support detection', () => {
 });
 
 describe('recognition language tags', () => {
-  it('offers only English and Bahasa Melayu, as agreed', () => {
-    expect(VOICE_LANGUAGES.map((language) => language.code)).toEqual(['en', 'ms']);
+  it('offers English, Bahasa Melayu, and Chinese', () => {
+    expect(VOICE_LANGUAGES.map((language) => language.code)).toEqual(['en', 'ms', 'zh']);
   });
 
-  it('maps each language to a Malaysian locale tag', () => {
+  it('maps each language to an appropriate locale tag', () => {
     expect(recognitionTagFor('en')).toBe('en-MY');
     expect(recognitionTagFor('ms')).toBe('ms-MY');
+    expect(recognitionTagFor('zh')).toBe('zh-CN');
   });
 });
 
@@ -152,12 +153,20 @@ describe('when speech recognition is available', () => {
     await waitFor(() => expect(onTranscript).toHaveBeenCalledWith('What can I afford?'));
   });
 
-  it('sends the Malay locale when Malay is chosen', async () => {
+  it('automatically sets the recognition locale matching the active language', async () => {
+    await i18n.changeLanguage('ms');
     renderVoice();
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'ms' } });
-    fireEvent.click(screen.getByRole('button', { name: /start voice input/i }));
+    fireEvent.click(screen.getByRole('button'));
 
     expect(StubRecognition.instances[0].lang).toBe('ms-MY');
+  });
+
+  it('supports Chinese speech recognition tag', async () => {
+    await i18n.changeLanguage('zh');
+    renderVoice();
+    fireEvent.click(screen.getByRole('button'));
+
+    expect(StubRecognition.instances[0].lang).toBe('zh-CN');
   });
 
   it('explains a denied microphone instead of failing silently', async () => {

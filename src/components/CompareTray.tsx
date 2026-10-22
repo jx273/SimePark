@@ -100,7 +100,7 @@ export default function CompareTray({ properties, onRemove, onClear }: CompareTr
       label: t('detail.nearestTransit'),
       render: (p) =>
         p.nearestTransit
-          ? `${p.nearestTransit}${p.transitDistanceKm == null ? '' : ` — ${p.transitDistanceKm} km (${p.transitMode ?? t('detail.routeTypeUnknown')})`}`
+          ? `${p.nearestTransit}${p.transitDistanceKm == null ? '' : ` — ${p.transitDistanceKm} km${p.transitMode ? ` (${p.transitMode})` : ''}`}`
           : t('common.unknown'),
     },
     {

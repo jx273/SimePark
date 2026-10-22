@@ -122,18 +122,12 @@ export default function HomePage({
 
       {affordabilityResult && <AffordabilityResults result={affordabilityResult} />}
 
-      {/* Catalogue state is stated plainly: the user should know whether they are
-          looking at the live database or the bundled source fixture. */}
-      {(catalogError || unpricedCount > 0 || (!isLoading && properties.length === 0)) && (
+      {/* Catalogue state: show error or empty state if encountered */}
+      {(catalogError || (!isLoading && properties.length === 0)) && (
         <div className="container">
           <div className="notice notice--info" role="status">
             {isLoading && <p>{t('common.loading')}</p>}
             {catalogError && <p>{catalogError}</p>}
-            {unpricedCount > 0 && (
-              <p>
-                {t('admin.missingField', { field: t('admin.fields.priceMYR') })}: {unpricedCount}
-              </p>
-            )}
             {!isLoading && properties.length === 0 && !catalogError && (
               <p>{t('explorer.emptyTitle')}</p>
             )}

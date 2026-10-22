@@ -33,6 +33,22 @@ interface PropertyExplorerProps {
   onGoToAffordability: () => void;
 }
 
+const EXPLORER_STATE_KEY = 'simepark_explorer_state';
+
+function loadSavedExplorerState(): {
+  filters?: PropertyFilters;
+  sortBy?: SortOption;
+  view?: 'list' | 'map';
+  page?: number;
+} | null {
+  try {
+    const raw = sessionStorage.getItem(EXPLORER_STATE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function PropertyExplorer({
   properties,
   totalCount,
@@ -47,17 +63,50 @@ export default function PropertyExplorer({
   onGoToAffordability,
 }: PropertyExplorerProps) {
   const { t } = useTranslation();
+  const savedState = useMemo(() => loadSavedExplorerState(), []);
 
-  // Seed with the submitted preferences so location and bedrooms actually filter.
+  // Seed with saved state if available, otherwise submitted preferences
   const [filters, setFilters] = useState<PropertyFilters>(() =>
-    filtersFromPreferences(preferences)
+    savedState?.filters ?? filtersFromPreferences(preferences)
   );
-  const [sortBy, setSortBy] = useState<SortOption>('match');
-  const [view, setView] = useState<'list' | 'map'>('list');
+  const [sortBy, setSortBy] = useState<SortOption>(() => savedState?.sortBy ?? 'match');
+  const [view, setView] = useState<'list' | 'map'>(() => savedState?.view ?? 'list');
   const [filtersOpen, setFiltersOpen] = useState(true);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState<number>(() => savedState?.page ?? 1);
   const pageSize = 9;
   const facilityDetailsRef = useRef<HTMLDetailsElement>(null);
+  const isFirstMount = useRef(true);
+
+  // Persist explorer state so returning from details restores position
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        EXPLORER_STATE_KEY,
+        JSON.stringify({ filters, sortBy, view, page })
+      );
+    } catch {
+      // safe fallback
+    }
+  }, [filters, sortBy, view, page]);
+
+  const handleViewDetails = (property: PropertyWithCalculations) => {
+    try {
+      sessionStorage.setItem('simepark_explorer_scroll_y', window.scrollY.toString());
+    } catch {
+      // safe fallback
+    }
+    onViewDetails(property);
+  };
+
+  useEffect(() => {
+    return () => {
+      try {
+        sessionStorage.setItem('simepark_explorer_scroll_y', window.scrollY.toString());
+      } catch {
+        // safe fallback
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -76,12 +125,11 @@ export default function PropertyExplorer({
   }, []);
 
   useEffect(() => {
+    if (!preferences) return;
     setFilters((current) => ({
       ...current,
-      location: preferences
-        ? preferences.preferredLocation?.trim() || ''
-        : '',
-      minBedrooms: preferences?.minBedrooms ? Math.floor(preferences.minBedrooms) : 0,
+      location: preferences.preferredLocation?.trim() || '',
+      minBedrooms: preferences.minBedrooms ? Math.floor(preferences.minBedrooms) : 0,
     }));
   }, [preferences?.preferredLocation, preferences?.minBedrooms]);
 
@@ -119,6 +167,10 @@ export default function PropertyExplorer({
   const visibleProperties = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   useEffect(() => {
+    if (isFirstMount.current) {
+      isFirstMount.current = false;
+      return;
+    }
     setPage(1);
   }, [filters, sortBy]);
 
@@ -461,7 +513,7 @@ export default function PropertyExplorer({
         {view === 'map' ? (
           <div className="explorer__map surface" role="region" aria-label={t('explorer.map')}>
             <Suspense fallback={<p role="status">{t('common.loading')}</p>}>
-              <PropertyMap properties={filtered} onViewDetails={onViewDetails} />
+              <PropertyMap properties={filtered} onViewDetails={handleViewDetails} />
             </Suspense>
           </div>
         ) : filtered.length > 0 ? (
@@ -473,7 +525,7 @@ export default function PropertyExplorer({
               >
                 <PropertyCard
                   property={property}
-                  onViewDetails={onViewDetails}
+                  onViewDetails={handleViewDetails}
                   isSaved={isSaved(property.id)}
                   isCompared={isCompared(property.id)}
                   onToggleSaved={onToggleSaved}
@@ -503,7 +555,7 @@ export default function PropertyExplorer({
           </div>
         )}
 
-        {view === 'list' && filtered.length > 0 && (
+        {view === 'list' && filtered.length > 0 && pageCount > 1 && (
           <nav className="explorer__pagination" aria-label={t('explorer.pagination')}>
             <button
               type="button"
