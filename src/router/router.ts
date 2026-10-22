@@ -146,7 +146,26 @@ export function useScrollToTopOnRouteChange(route: Route, enabled = true): void 
   useEffect(() => {
     if (!enabled || typeof window === 'undefined') return;
 
+    if (route.name === 'home') {
+      try {
+        const savedY = sessionStorage.getItem('simepark_explorer_scroll_y');
+        if (savedY !== null) {
+          sessionStorage.removeItem('simepark_explorer_scroll_y');
+          const y = parseFloat(savedY);
+          if (!isNaN(y)) {
+            // Allow DOM to settle before restoring scroll position
+            setTimeout(() => {
+              window.scrollTo({ top: y, behavior: 'auto' });
+            }, 50);
+            return;
+          }
+        }
+      } catch {
+        // safe fallback
+      }
+    }
+
     const prefersReduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     window.scrollTo({ top: 0, behavior: prefersReduced ? 'auto' : 'smooth' });
-  }, [key, enabled]);
+  }, [key, enabled, route.name]);
 }

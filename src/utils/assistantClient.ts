@@ -9,6 +9,7 @@ import {
   ASSISTANT_LIMITS,
   type AssistantApiResponse,
   type AssistantContext,
+  type AssistantLanguage,
   type AssistantMessage,
 } from '../types/assistant';
 
@@ -40,7 +41,7 @@ export async function askAssistant(
   message: string,
   history: AssistantMessage[],
   context: AssistantContext,
-  options: { timeoutMs?: number } = {}
+  options: { timeoutMs?: number; language?: AssistantLanguage } = {}
 ): Promise<AssistantCallResult> {
   const controller = new AbortController();
   const timer = setTimeout(
@@ -56,6 +57,7 @@ export async function askAssistant(
         message: message.slice(0, ASSISTANT_LIMITS.maxMessageLength),
         history: history.slice(-ASSISTANT_LIMITS.maxHistoryMessages),
         context,
+        language: options.language,
       }),
       signal: controller.signal,
     });

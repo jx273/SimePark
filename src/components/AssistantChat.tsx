@@ -14,13 +14,13 @@ import AssistantMessageText from './AssistantMessageText';
 import VoiceInput from './VoiceInput';
 import './AssistantChat.css';
 
-const PROPERTY_SPECIFIC_QUESTIONS = [
-  'Can I afford this property based on my current budget?',
-  'What would the estimated monthly repayment be for this property?',
-  'What deposit might I need for this property?',
-  'What should I check before buying this property?',
-  'How does this property compare with similar properties?',
-];
+const PROPERTY_SPECIFIC_QUESTION_KEYS = [
+  'afford',
+  'repayment',
+  'deposit',
+  'checks',
+  'compare',
+] as const;
 
 interface AssistantChatProps {
   /** Null until the user submits the affordability form. */
@@ -43,7 +43,7 @@ export default function AssistantChat({
   comparisonProperties = [],
   onNavigate,
 }: AssistantChatProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -92,7 +92,13 @@ export default function AssistantChat({
         comparisonProperties,
       });
 
-      const result = await askAssistant(question, history, context);
+      const activeLang = i18n.language.startsWith('zh')
+        ? 'zh'
+        : i18n.language.startsWith('ms')
+        ? 'ms'
+        : 'en';
+
+      const result = await askAssistant(question, history, context, { language: activeLang });
 
       if (result.ok) {
         setMessages((previous) => [
@@ -118,6 +124,7 @@ export default function AssistantChat({
       properties,
       selectedProperty,
       comparisonProperties,
+      i18n.language,
       t,
     ]
   );
@@ -142,11 +149,9 @@ export default function AssistantChat({
   return (
     <section className="assistant section section--alt" id="assistant">
       <div className="container container--narrow">
-        <h2 className="section__title text-center">AI Home-Buying Assistant</h2>
+        <h2 className="section__title text-center">{t('assistant.title')}</h2>
         <p className="section__subtitle" style={{ margin: '0 auto var(--space-lg)' }}>
-          Ask about your affordability estimate, why certain properties matched, or the
-          upfront costs of buying in Malaysia. Answers explain SimePark&apos;s own
-          calculations — they never replace them.
+          {t('assistant.subtitle')}
         </p>
 
         <div className="assistant__panel">
@@ -154,31 +159,31 @@ export default function AssistantChat({
             {selectedProperty ? (
               <p className="assistant__context-text">
                 <span className="assistant__context-dot" aria-hidden="true" />
-                Focused on <strong>{selectedProperty.propertyName}</strong> ({selectedProperty.priceMYR ? formatMYR(selectedProperty.priceMYR) : t('common.unknown')} in {selectedProperty.location}).
-                {hasContext ? ' Your affordability profile is connected.' : ' You can ask any question about this property or general home-buying.'}
+                {t('assistant.contextFocused', {
+                  name: selectedProperty.propertyName,
+                  price: selectedProperty.priceMYR ? formatMYR(selectedProperty.priceMYR) : t('common.unknown'),
+                  location: selectedProperty.location,
+                })}{' '}
+                {hasContext ? t('assistant.contextProfileConnected') : t('assistant.contextGeneral')}
               </p>
             ) : hasContext ? (
               <p className="assistant__context-text">
                 <span className="assistant__context-dot" aria-hidden="true" />
-                {properties.length === 1
-                  ? 'Your latest affordability estimate and 1 listed property are'
-                  : `Your latest affordability estimate and ${properties.length} listed properties are`}{' '}
-                available to the assistant. Submitting the form again updates these figures
-                immediately.
+                {t('assistant.contextReady', { count: properties.length })}
               </p>
             ) : (
               <p className="assistant__context-text assistant__context-text--empty">
-                <strong>No affordability estimate yet.</strong> You can ask any question about properties, Malaysian home-buying, or upfront costs.
-                To check personalized loan limits, {onNavigate ? (
+                {t('assistant.contextEmpty')}{' '}
+                {onNavigate ? (
                   <button
                     type="button"
                     className="assistant__inline-link"
                     onClick={() => onNavigate('affordability')}
                   >
-                    complete the affordability form
+                    {t('assistant.contextEmptyCta')}
                   </button>
                 ) : (
-                  'complete the affordability form'
+                  t('assistant.contextEmptyCta')
                 )}
                 .
               </p>
@@ -190,27 +195,32 @@ export default function AssistantChat({
             ref={logRef}
             role="log"
             aria-live="polite"
-            aria-label="Conversation with the AI home-buying assistant"
+            aria-label={t('assistant.log')}
             tabIndex={0}
           >
             {messages.length === 0 && !isLoading && (
               <div className="assistant__intro">
                 <p className="assistant__intro-title">
-                  {selectedProperty ? `Suggested questions for ${selectedProperty.propertyName}:` : t('assistant.newHere')}
+                  {selectedProperty
+                    ? t('assistant.questionsForProperty', { name: selectedProperty.propertyName })
+                    : t('assistant.newHere')}
                 </p>
                 <ul className="assistant__suggestions">
                   {selectedProperty
-                    ? PROPERTY_SPECIFIC_QUESTIONS.map((question) => (
-                        <li key={question}>
-                          <button
-                            type="button"
-                            className="assistant__suggestion"
-                            onClick={() => void send(question)}
-                          >
-                            {question}
-                          </button>
-                        </li>
-                      ))
+                    ? PROPERTY_SPECIFIC_QUESTION_KEYS.map((key) => {
+                        const question = t(`assistant.propertySuggestions.${key}`);
+                        return (
+                          <li key={key}>
+                            <button
+                              type="button"
+                              className="assistant__suggestion"
+                              onClick={() => void send(question)}
+                            >
+                              {question}
+                            </button>
+                          </li>
+                        );
+                      })
                     : SUGGESTED_QUESTION_KEYS.map((key) => {
                         const question = t(`assistant.suggestions.${key}`);
                         return (
