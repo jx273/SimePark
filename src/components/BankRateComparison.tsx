@@ -194,7 +194,9 @@ export default function BankRateComparison({
           </form>
 
           <div className="bank-rates__panel surface">
-            <h3>{t('bankRates.results')}</h3>
+            <div className="bank-rates__panel-header">
+              <h3>{t('bankRates.results')}</h3>
+            </div>
             {!ready ? (
               <p role="status">{t('bankRates.needLoanAmount')}</p>
             ) : compared.length === 0 ? (
@@ -207,60 +209,73 @@ export default function BankRateComparison({
                     years: tenureYears,
                   })}
                 </p>
-                <div className="bank-rates__table-wrap">
-                  <table className="bank-rates__table">
-                    <thead>
-                      <tr>
-                        <th>{t('bankRates.scenario')}</th>
-                        <th>{t('affordability.interestRate')}</th>
-                        <th>{t('simulator.rateType')}</th>
-                        <th>{t('card.estMonthly')}</th>
-                        <th>{t('bankRates.diffVsBaseline')}</th>
-                        <th>{t('simulator.totalInterest')}</th>
-                        <th>{t('bankRates.origin')}</th>
-                        <th>{t('common.apply')}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {compared.map((row) => {
-                        const baseline = compared.find((r) => r.origin === 'calculator') ?? compared[0];
-                        const diff = row.monthlyPayment - (baseline ? baseline.monthlyPayment : row.monthlyPayment);
-                        return (
-                          <tr key={row.id}>
-                            <td>{row.label}</td>
-                            <td>{formatPercentage(row.annualRate)}</td>
-                            <td>{row.rateType ?? t('common.unknown')}</td>
-                            <td>{formatMYR(row.monthlyPayment)}</td>
-                            <td>
+
+                <div className="bank-rates__cards">
+                  {compared.map((row) => {
+                    const baseline = compared.find((r) => r.origin === 'calculator') ?? compared[0];
+                    const diff = row.monthlyPayment - (baseline ? baseline.monthlyPayment : row.monthlyPayment);
+                    return (
+                      <div key={row.id} className="bank-rates__card">
+                        <div className="bank-rates__card-header">
+                          <div>
+                            <h4 className="bank-rates__card-title">{row.label}</h4>
+                            <span className="badge badge--type">{originLabel(row.origin)}</span>
+                          </div>
+                          <div className="bank-rates__card-rate">
+                            <span className="bank-rates__rate-val">{formatPercentage(row.annualRate)}</span>
+                            <span className="bank-rates__rate-lbl">{t('affordability.interestRate')}</span>
+                          </div>
+                        </div>
+
+                        <div className="bank-rates__card-metrics">
+                          <div className="bank-rates__metric">
+                            <span className="bank-rates__metric-label">{t('card.estMonthly')}</span>
+                            <span className="bank-rates__metric-value">{formatMYR(row.monthlyPayment)}</span>
+                          </div>
+                          <div className="bank-rates__metric">
+                            <span className="bank-rates__metric-label">{t('bankRates.diffVsBaseline')}</span>
+                            <span className="bank-rates__metric-value">
                               {diff === 0 ? (
-                                <span style={{ color: 'var(--color-text-muted)' }}>Baseline</span>
+                                <span className="bank-rates__diff-baseline">{t('bankRates.baseline')}</span>
                               ) : diff < 0 ? (
-                                <span style={{ color: '#2E7D32', fontWeight: 600 }}>Save {formatMYR(Math.abs(diff))}/mo</span>
+                                <span className="bank-rates__diff-save">
+                                  {t('bankRates.savePerMonth', { amount: formatMYR(Math.abs(diff)) })}
+                                </span>
                               ) : (
-                                <span style={{ color: 'var(--brand-red)', fontWeight: 600 }}>+{formatMYR(diff)}/mo</span>
+                                <span className="bank-rates__diff-more">
+                                  {t('bankRates.morePerMonth', { amount: formatMYR(diff) })}
+                                </span>
                               )}
-                            </td>
-                            <td>{formatMYR(row.totalInterest)}</td>
-                            <td>{originLabel(row.origin)}</td>
-                            <td>
-                              {onApplyRate && (
-                                <button
-                                  type="button"
-                                  className="btn btn--secondary btn--sm"
-                                  onClick={() => onApplyRate(row.annualRate)}
-                                >
-                                  {t('simulator.applyManualRate')}
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                            </span>
+                          </div>
+                          <div className="bank-rates__metric">
+                            <span className="bank-rates__metric-label">{t('simulator.totalInterest')}</span>
+                            <span className="bank-rates__metric-value">{formatMYR(row.totalInterest)}</span>
+                          </div>
+                          <div className="bank-rates__metric">
+                            <span className="bank-rates__metric-label">{t('simulator.rateType')}</span>
+                            <span className="bank-rates__metric-value">{row.rateType ?? t('common.unknown')}</span>
+                          </div>
+                        </div>
+
+                        {onApplyRate && (
+                          <div className="bank-rates__card-actions">
+                            <button
+                              type="button"
+                              className="btn btn--secondary btn--sm"
+                              onClick={() => onApplyRate(row.annualRate)}
+                            >
+                              {t('simulator.applyManualRate')}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
+
                 <p className="form-helper" style={{ marginTop: 'var(--space-md)' }}>
-                  * Repayments use identical loan principal and tenure assumptions, calculated mathematically using standard monthly amortisation consistent with the affordability calculator.
+                  {t('bankRates.repaymentNote')}
                 </p>
               </>
             )}

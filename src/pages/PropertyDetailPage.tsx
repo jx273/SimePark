@@ -138,12 +138,116 @@ export default function PropertyDetailPage({
   );
   const facilityIcon = (facility: string) => {
     const label = facility.toLowerCase();
-    if (label.includes('pool')) return '◉';
-    if (label.includes('gym') || label.includes('fitness')) return '◇';
-    if (label.includes('security') || label.includes('guard')) return '▣';
-    if (label.includes('park') || label.includes('playground')) return '♧';
-    if (label.includes('court') || label.includes('sport')) return '⌁';
-    return '•';
+    if (
+      label.includes('pool') ||
+      label.includes('kolam') ||
+      label.includes('泳') ||
+      label.includes('水疗') ||
+      label.includes('水池') ||
+      label.includes('jacuzzi') ||
+      label.includes('jakuzi') ||
+      label.includes('sauna') ||
+      label.includes('桑拿')
+    ) {
+      return '◉';
+    }
+    if (
+      label.includes('gym') ||
+      label.includes('fitness') ||
+      label.includes('gimnasium') ||
+      label.includes('kecergasan') ||
+      label.includes('健') ||
+      label.includes('运') ||
+      label.includes('yoga') ||
+      label.includes('瑜伽')
+    ) {
+      return '◇';
+    }
+    if (
+      label.includes('security') ||
+      label.includes('guard') ||
+      label.includes('keselamatan') ||
+      label.includes('pengawal') ||
+      label.includes('保安') ||
+      label.includes('警卫') ||
+      label.includes('门禁') ||
+      label.includes('围篱')
+    ) {
+      return '▣';
+    }
+    if (
+      label.includes('parking') ||
+      label.includes('car park') ||
+      label.includes('letak kereta') ||
+      label.includes('停')
+    ) {
+      return '♧';
+    }
+    if (
+      label.includes('park') ||
+      label.includes('playground') ||
+      label.includes('taman') ||
+      label.includes('permainan') ||
+      label.includes('游乐') ||
+      label.includes('公园') ||
+      label.includes('花园') ||
+      label.includes('绿') ||
+      label.includes('树屋') ||
+      label.includes('森林') ||
+      label.includes('hutan') ||
+      label.includes('herb') ||
+      label.includes('zen') ||
+      label.includes('禅') ||
+      label.includes('草')
+    ) {
+      return '♧';
+    }
+    if (
+      label.includes('court') ||
+      label.includes('sport') ||
+      label.includes('track') ||
+      label.includes('gelanggang') ||
+      label.includes('padang') ||
+      label.includes('trek') ||
+      label.includes('球') ||
+      label.includes('跑') ||
+      label.includes('步道') ||
+      label.includes('道')
+    ) {
+      return '⌁';
+    }
+    if (
+      label.includes('bbq') ||
+      label.includes('barbeque') ||
+      label.includes('barbeku') ||
+      label.includes('烧烤')
+    ) {
+      return '♨';
+    }
+    if (
+      label.includes('hall') ||
+      label.includes('club') ||
+      label.includes('lounge') ||
+      label.includes('dewan') ||
+      label.includes('kelab') ||
+      label.includes('会所') ||
+      label.includes('礼堂') ||
+      label.includes('廊') ||
+      label.includes('休息') ||
+      label.includes('中心') ||
+      label.includes('surau') ||
+      label.includes('祈祷') ||
+      label.includes('library') ||
+      label.includes('图书') ||
+      label.includes('阅览') ||
+      label.includes('bar') ||
+      label.includes('café') ||
+      label.includes('cafe') ||
+      label.includes('咖啡')
+    ) {
+      return '🏛';
+    }
+    return '✓';
   };
 
   const getAmenityCategory = (name: string): { icon: string; category: string } => {

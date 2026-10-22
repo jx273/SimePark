@@ -13,7 +13,7 @@ import {
 } from '../lib/mappers';
 import { navigate } from '../router/router';
 import type { PropertyMediaRow, PropertyRow } from '../lib/database.types';
-import type { Property, PropertyType } from '../types/property';
+import type { Property, PropertyTranslation, PropertyType } from '../types/property';
 import { buildBundledCatalog, isSafeMediaUrl } from '../lib/propertyAdapter';
 import { getDisplayName, updateDisplayName } from '../lib/userRepository';
 import { formatMYR } from '../utils/mortgage';
@@ -73,6 +73,7 @@ const EMPTY_FORM: AdminPropertyForm = {
   notes: null,
   isExample: false,
   isPublished: false,
+  translations: { ms: {}, zh: {} },
 };
 
 type TextFormKey =
@@ -195,6 +196,12 @@ export default function AdminPage() {
   const [catalogueSearch, setCatalogueSearch] = useState('');
   const [catalogueFilter, setCatalogueFilter] = useState<'all' | 'published' | 'draft' | 'needsChecking'>('all');
   const [mediaTabFilter, setMediaTabFilter] = useState<'all' | 'photo' | 'floorplan' | 'video'>('all');
+  const [showChineseTranslation, setShowChineseTranslation] = useState(false);
+  const [showMalayTranslation, setShowMalayTranslation] = useState(false);
+  const [chineseCollapsed, setChineseCollapsed] = useState(false);
+  const [malayCollapsed, setMalayCollapsed] = useState(false);
+  const [zhFacilitiesText, setZhFacilitiesText] = useState('');
+  const [msFacilitiesText, setMsFacilitiesText] = useState('');
 
   const addAmenity = () => {
     setAmenitiesList((prev) => [
@@ -213,6 +220,58 @@ export default function AdminPage() {
     );
   };
 
+  const updateZhField = (key: keyof PropertyTranslation, value: string | null) => {
+    setForm((previous) => ({
+      ...previous,
+      translations: {
+        ...previous.translations,
+        zh: {
+          ...(previous.translations?.zh ?? {}),
+          [key]: value || null,
+        },
+      },
+    }));
+  };
+
+  const updateMsField = (key: keyof PropertyTranslation, value: string | null) => {
+    setForm((previous) => ({
+      ...previous,
+      translations: {
+        ...previous.translations,
+        ms: {
+          ...(previous.translations?.ms ?? {}),
+          [key]: value || null,
+        },
+      },
+    }));
+  };
+
+  const removeChineseTranslation = () => {
+    setShowChineseTranslation(false);
+    setZhFacilitiesText('');
+    setForm((previous) => {
+      const nextTranslations = { ...(previous.translations ?? {}) };
+      delete nextTranslations.zh;
+      return {
+        ...previous,
+        translations: nextTranslations,
+      };
+    });
+  };
+
+  const removeMalayTranslation = () => {
+    setShowMalayTranslation(false);
+    setMsFacilitiesText('');
+    setForm((previous) => {
+      const nextTranslations = { ...(previous.translations ?? {}) };
+      delete nextTranslations.ms;
+      return {
+        ...previous,
+        translations: nextTranslations,
+      };
+    });
+  };
+
   const startEditProperty = (adminForm: AdminPropertyForm, isEdit = true) => {
     setForm(adminForm);
     setEditing(isEdit);
@@ -221,11 +280,45 @@ export default function AdminPage() {
     setTouchedFields(new Set());
     setFieldErrors({});
     setHasAttemptedSubmit(false);
+
+    const zhTrans = adminForm.translations?.zh;
+    const msTrans = adminForm.translations?.ms;
+    const hasZh = Boolean(
+      zhTrans &&
+        Object.values(zhTrans).some(
+          (v) =>
+            v !== null &&
+            v !== undefined &&
+            (Array.isArray(v) ? v.length > 0 : String(v).trim() !== '')
+        )
+    );
+    const hasMs = Boolean(
+      msTrans &&
+        Object.values(msTrans).some(
+          (v) =>
+            v !== null &&
+            v !== undefined &&
+            (Array.isArray(v) ? v.length > 0 : String(v).trim() !== '')
+        )
+    );
+
+    setShowChineseTranslation(hasZh);
+    setShowMalayTranslation(hasMs);
+    setChineseCollapsed(false);
+    setMalayCollapsed(false);
+    setZhFacilitiesText((zhTrans?.facilities ?? []).join('\n'));
+    setMsFacilitiesText((msTrans?.facilities ?? []).join('\n'));
   };
 
   const resetToNewProperty = () => {
     startEditProperty(EMPTY_FORM, false);
     setMedia([]);
+    setShowChineseTranslation(false);
+    setShowMalayTranslation(false);
+    setChineseCollapsed(false);
+    setMalayCollapsed(false);
+    setZhFacilitiesText('');
+    setMsFacilitiesText('');
   };
 
   const handleBlur = (field: string) => {
@@ -342,12 +435,18 @@ export default function AdminPage() {
     const dbRows = (data ?? []) as PropertyRow[];
     const bundled = buildBundledCatalog();
     const sanitizedDbRows = dbRows.map((r) => {
+      const canonical = bundled.find((p) => p.id === r.id);
       // Data integrity safeguard: SP-030 must always reflect canonical "The Charlotte"
       if (r.id === 'SP-030' && (r.property_name.toLowerCase().includes('klcc') || r.property_name !== 'The Charlotte')) {
-        const canonical = bundled.find((p) => p.id === 'SP-030');
         if (canonical) {
           return propertyToRow(canonical);
         }
+      }
+      if ((!r.translations || Object.keys(r.translations).length === 0) && canonical?.translations) {
+        return {
+          ...r,
+          translations: canonical.translations as any,
+        };
       }
       return r;
     });
@@ -675,8 +774,8 @@ export default function AdminPage() {
           rows.some((r) => r.id.trim().toLowerCase() === trimmedId.toLowerCase()) ||
           buildBundledCatalog().some((p) => p.id.trim().toLowerCase() === trimmedId.toLowerCase());
         if (isDuplicate) {
-          errors.id = 'This property ID already exists. Please use a unique ID.';
-          errorList.push('This property ID already exists. Please use a unique ID.');
+          errors.id = 'This property ID is already taken. Please use a unique ID.';
+          errorList.push('This property ID is already taken. Please use a unique ID.');
         }
       }
     }
@@ -874,26 +973,124 @@ export default function AdminPage() {
     const client = await getSupabaseClient();
     if (!client) return;
 
+    if (!editing) {
+      const trimmedId = form.id.trim();
+      const duplicateInRows = rows.some((r) => r.id.trim().toLowerCase() === trimmedId.toLowerCase());
+      const duplicateInBundled = buildBundledCatalog().some((p) => p.id.trim().toLowerCase() === trimmedId.toLowerCase());
+      if (duplicateInRows || duplicateInBundled) {
+        setFieldErrors((prev) => ({
+          ...prev,
+          id: 'This property ID is already taken. Please use a unique ID.',
+        }));
+        setStatus({
+          tone: 'error',
+          text: 'This property ID is already taken. Please use a unique ID.',
+        });
+        const el = document.getElementById('field-id');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+        return;
+      }
+
+      const { data: existingRemote } = await client
+        .from('properties')
+        .select('id')
+        .eq('id', trimmedId)
+        .maybeSingle();
+
+      if (existingRemote) {
+        setFieldErrors((prev) => ({
+          ...prev,
+          id: 'This property ID is already taken. Please use a unique ID.',
+        }));
+        setStatus({
+          tone: 'error',
+          text: 'This property ID is already taken. Please use a unique ID.',
+        });
+        const el = document.getElementById('field-id');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus();
+        return;
+      }
+    }
+
     const parsedFacilities = parseFacilitiesText(facilitiesText);
     const serializedAmenity = formatAmenityString(amenitiesList);
     const firstAmenityDistance = amenitiesList.find((a) => a.distanceKm.trim())?.distanceKm;
     const computedAmenityDistance = firstAmenityDistance ? parseFloat(firstAmenityDistance) : form.amenityDistanceKm;
+
+    const parsedZhFacilities = showChineseTranslation ? parseFacilitiesText(zhFacilitiesText) : [];
+    const parsedMsFacilities = showMalayTranslation ? parseFacilitiesText(msFacilitiesText) : [];
+
+    const zhTrans: PropertyTranslation | undefined = showChineseTranslation
+      ? {
+          ...(form.translations?.zh ?? {}),
+          ...(parsedZhFacilities.length > 0 ? { facilities: parsedZhFacilities } : {}),
+        }
+      : undefined;
+
+    const msTrans: PropertyTranslation | undefined = showMalayTranslation
+      ? {
+          ...(form.translations?.ms ?? {}),
+          ...(parsedMsFacilities.length > 0 ? { facilities: parsedMsFacilities } : {}),
+        }
+      : undefined;
+
+    const activeTranslations: Property['translations'] = {};
+    if (
+      zhTrans &&
+      Object.values(zhTrans).some(
+        (v) =>
+          v !== null &&
+          v !== undefined &&
+          (Array.isArray(v) ? v.length > 0 : String(v).trim() !== '')
+      )
+    ) {
+      activeTranslations.zh = zhTrans;
+    }
+    if (
+      msTrans &&
+      Object.values(msTrans).some(
+        (v) =>
+          v !== null &&
+          v !== undefined &&
+          (Array.isArray(v) ? v.length > 0 : String(v).trim() !== '')
+      )
+    ) {
+      activeTranslations.ms = msTrans;
+    }
 
     const updatedForm: AdminPropertyForm = {
       ...form,
       facilities: parsedFacilities,
       nearbyAmenity: serializedAmenity || null,
       amenityDistanceKm: computedAmenityDistance,
+      translations: Object.keys(activeTranslations).length > 0 ? activeTranslations : undefined,
     };
 
     const payload = formToUpdate(updatedForm);
 
-    const result = editing
+    let result = editing
       ? await client.from('properties').update(payload).eq('id', form.id).select('id')
       : await client
           .from('properties')
           .insert(propertyToInsert(updatedForm, user?.id ?? null))
           .select('id');
+
+    // Backward-compatibility: if the DB does not have the translations column yet, retry without it
+    if (
+      result.error &&
+      (result.error.message?.includes('translations') || (result.error as any).code === '42703')
+    ) {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { translations: _t1, ...updateWithoutTranslations } = payload as any;
+      const insertPayload = propertyToInsert(updatedForm, user?.id ?? null);
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { translations: _t2, ...insertWithoutTranslations } = insertPayload as any;
+      result = editing
+        ? await client.from('properties').update(updateWithoutTranslations).eq('id', form.id).select('id')
+        : await client.from('properties').insert(insertWithoutTranslations).select('id');
+    }
 
     if (result.error) {
       if (
@@ -903,11 +1100,11 @@ export default function AdminPage() {
       ) {
         setFieldErrors((prev) => ({
           ...prev,
-          id: 'This property ID already exists. Please use a unique ID.',
+          id: 'This property ID is already taken. Please use a unique ID.',
         }));
         setStatus({
           tone: 'error',
-          text: 'This property ID already exists. Please use a unique ID.',
+          text: 'This property ID is already taken. Please use a unique ID.',
         });
         const el = document.getElementById('field-id');
         el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -925,6 +1122,9 @@ export default function AdminPage() {
       .eq('id', form.id)
       .maybeSingle();
     const finalForm = savedRow ? rowToAdminForm(savedRow as PropertyRow) : updatedForm;
+    if (!finalForm.translations && updatedForm.translations) {
+      finalForm.translations = updatedForm.translations;
+    }
     startEditProperty(finalForm, true);
     await loadRows();
     await loadMedia(form.id);
@@ -1802,6 +2002,397 @@ export default function AdminPage() {
                 <span className="form-helper">{t('admin.fields.isPublishedHelp')}</span>
               </div>
             </div>
+          </div>
+
+          {/* ---------------- Section 6: Optional Multi-Language Translations ---------------- */}
+          <div className="admin__editor-section">
+            <div className="admin__editor-section-header">
+              <div>
+                <h3 className="admin__editor-section-title">
+                  6. Translations (Optional / Terjemahan / 语言翻译)
+                </h3>
+                <p className="form-helper" style={{ margin: 'var(--space-xs) 0 0 0' }}>
+                  English is the primary source. Translations into Simplified Chinese and Bahasa Melayu are strictly optional. Any non-translated fields will automatically fall back to the English version.
+                </p>
+              </div>
+            </div>
+
+            <div className="admin__translation-actions">
+              {!showChineseTranslation && (
+                <button
+                  type="button"
+                  className="admin__translation-btn"
+                  onClick={() => {
+                    setShowChineseTranslation(true);
+                    setChineseCollapsed(false);
+                  }}
+                >
+                  <span aria-hidden="true">+</span> Add Chinese Translation (简体中文)
+                </button>
+              )}
+              {!showMalayTranslation && (
+                <button
+                  type="button"
+                  className="admin__translation-btn"
+                  onClick={() => {
+                    setShowMalayTranslation(true);
+                    setMalayCollapsed(false);
+                  }}
+                >
+                  <span aria-hidden="true">+</span> Add Malay Translation (Bahasa Melayu)
+                </button>
+              )}
+            </div>
+
+            {/* Simplified Chinese Translation Panel */}
+            {showChineseTranslation && (
+              <div className="admin__translation-card">
+                <div
+                  className="admin__translation-header"
+                  onClick={() => setChineseCollapsed((prev) => !prev)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setChineseCollapsed((prev) => !prev);
+                    }
+                  }}
+                >
+                  <div className="admin__translation-header-left">
+                    <span className="admin__translation-badge admin__translation-badge--zh">ZH</span>
+                    <h4 className="admin__translation-title">
+                      Simplified Chinese Translation (简体中文)
+                    </h4>
+                  </div>
+                  <div className="admin__translation-header-right">
+                    <button
+                      type="button"
+                      className="admin__translation-remove-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeChineseTranslation();
+                      }}
+                      title="Remove Chinese Translation"
+                    >
+                      ✕ Remove Translation
+                    </button>
+                    <span
+                      className={`admin__translation-toggle-icon ${
+                        chineseCollapsed ? 'admin__translation-toggle-icon--collapsed' : ''
+                      }`}
+                      aria-hidden="true"
+                    >
+                      ▼
+                    </span>
+                  </div>
+                </div>
+
+                {!chineseCollapsed && (
+                  <div className="admin__translation-body">
+                    <div className="admin__translation-helper">
+                      All fields below are optional. Leave any field blank to display the English version by default.
+                    </div>
+                    <div className="admin__grid">
+                      <label className="form-group" htmlFor="field-zh-propertyName">
+                        <span className="form-label">Property Name (物业名称)</span>
+                        <input
+                          id="field-zh-propertyName"
+                          type="text"
+                          className="form-input"
+                          placeholder={form.propertyName || 'e.g. 沃格高级公寓'}
+                          value={form.translations?.zh?.propertyName ?? ''}
+                          onChange={(e) => updateZhField('propertyName', e.target.value)}
+                        />
+                      </label>
+
+                      <label className="form-group" htmlFor="field-zh-propertyType">
+                        <span className="form-label">Property Type (房产类型)</span>
+                        <input
+                          id="field-zh-propertyType"
+                          type="text"
+                          className="form-input"
+                          placeholder={form.propertyType || 'e.g. 公寓 / 排屋'}
+                          value={form.translations?.zh?.propertyType ?? ''}
+                          onChange={(e) => updateZhField('propertyType', e.target.value)}
+                        />
+                      </label>
+
+                      <label className="form-group" htmlFor="field-zh-location">
+                        <span className="form-label">Location (地点)</span>
+                        <input
+                          id="field-zh-location"
+                          type="text"
+                          className="form-input"
+                          placeholder={form.location || 'e.g. 吉隆坡'}
+                          value={form.translations?.zh?.location ?? ''}
+                          onChange={(e) => updateZhField('location', e.target.value)}
+                        />
+                      </label>
+
+                      <label className="form-group" htmlFor="field-zh-address">
+                        <span className="form-label">Address (地址)</span>
+                        <input
+                          id="field-zh-address"
+                          type="text"
+                          className="form-input"
+                          placeholder={form.address || 'e.g. 详细地址'}
+                          value={form.translations?.zh?.address ?? ''}
+                          onChange={(e) => updateZhField('address', e.target.value)}
+                        />
+                      </label>
+
+                      <label className="form-group" htmlFor="field-zh-priceBasis">
+                        <span className="form-label">Price Basis (价格基准)</span>
+                        <input
+                          id="field-zh-priceBasis"
+                          type="text"
+                          className="form-input"
+                          placeholder={form.priceBasis || 'e.g. 起售价 / 售价'}
+                          value={form.translations?.zh?.priceBasis ?? ''}
+                          onChange={(e) => updateZhField('priceBasis', e.target.value)}
+                        />
+                      </label>
+
+                      <label className="form-group" htmlFor="field-zh-tenure">
+                        <span className="form-label">Tenure (产权)</span>
+                        <input
+                          id="field-zh-tenure"
+                          type="text"
+                          className="form-input"
+                          placeholder={form.tenure || 'e.g. 永久地契 / 租赁地契'}
+                          value={form.translations?.zh?.tenure ?? ''}
+                          onChange={(e) => updateZhField('tenure', e.target.value)}
+                        />
+                      </label>
+
+                      <label className="form-group" htmlFor="field-zh-furnishingStatus">
+                        <span className="form-label">Furnishing Status (装修状况)</span>
+                        <input
+                          id="field-zh-furnishingStatus"
+                          type="text"
+                          className="form-input"
+                          placeholder={form.furnishingStatus || 'e.g. 全配 / 半配 / 未装修'}
+                          value={form.translations?.zh?.furnishingStatus ?? ''}
+                          onChange={(e) => updateZhField('furnishingStatus', e.target.value)}
+                        />
+                      </label>
+
+                      <label className="form-group" htmlFor="field-zh-availabilityStatus">
+                        <span className="form-label">Availability Status (供应状态)</span>
+                        <input
+                          id="field-zh-availabilityStatus"
+                          type="text"
+                          className="form-input"
+                          placeholder={form.availabilityStatus || 'e.g. 可购买 / 已售出'}
+                          value={form.translations?.zh?.availabilityStatus ?? ''}
+                          onChange={(e) => updateZhField('availabilityStatus', e.target.value)}
+                        />
+                      </label>
+                    </div>
+
+                    <label className="form-group" htmlFor="field-zh-facilities" style={{ marginTop: 'var(--space-md)' }}>
+                      <span className="form-label">Facilities (设施 - 每行一项或逗号分隔)</span>
+                      <textarea
+                        id="field-zh-facilities"
+                        className="form-input form-textarea"
+                        rows={3}
+                        placeholder="游泳池&#10;健身房&#10;24小时保安"
+                        value={zhFacilitiesText}
+                        onChange={(e) => setZhFacilitiesText(e.target.value)}
+                      />
+                    </label>
+
+                    <label className="form-group" htmlFor="field-zh-notes" style={{ marginTop: 'var(--space-md)' }}>
+                      <span className="form-label">Notes (备注)</span>
+                      <textarea
+                        id="field-zh-notes"
+                        className="form-input form-textarea"
+                        rows={2}
+                        placeholder="附加中文说明..."
+                        value={form.translations?.zh?.notes ?? ''}
+                        onChange={(e) => updateZhField('notes', e.target.value)}
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Bahasa Melayu Translation Panel */}
+            {showMalayTranslation && (
+              <div className="admin__translation-card">
+                <div
+                  className="admin__translation-header"
+                  onClick={() => setMalayCollapsed((prev) => !prev)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setMalayCollapsed((prev) => !prev);
+                    }
+                  }}
+                >
+                  <div className="admin__translation-header-left">
+                    <span className="admin__translation-badge admin__translation-badge--ms">MS</span>
+                    <h4 className="admin__translation-title">
+                      Bahasa Melayu Translation (Bahasa Melayu)
+                    </h4>
+                  </div>
+                  <div className="admin__translation-header-right">
+                    <button
+                      type="button"
+                      className="admin__translation-remove-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeMalayTranslation();
+                      }}
+                      title="Remove Malay Translation"
+                    >
+                      ✕ Remove Translation
+                    </button>
+                    <span
+                      className={`admin__translation-toggle-icon ${
+                        malayCollapsed ? 'admin__translation-toggle-icon--collapsed' : ''
+                      }`}
+                      aria-hidden="true"
+                    >
+                      ▼
+                    </span>
+                  </div>
+                </div>
+
+                {!malayCollapsed && (
+                  <div className="admin__translation-body">
+                    <div className="admin__translation-helper">
+                      Semua medan di bawah adalah pilihan. Biarkan kosong untuk menggunakan nilai Bahasa Inggeris secara lalai.
+                    </div>
+                    <div className="admin__grid">
+                      <label className="form-group" htmlFor="field-ms-propertyName">
+                        <span className="form-label">Nama Hartanah (Property Name)</span>
+                        <input
+                          id="field-ms-propertyName"
+                          type="text"
+                          className="form-input"
+                          placeholder={form.propertyName || 'cth. Kondominium Indah'}
+                          value={form.translations?.ms?.propertyName ?? ''}
+                          onChange={(e) => updateMsField('propertyName', e.target.value)}
+                        />
+                      </label>
+
+                      <label className="form-group" htmlFor="field-ms-propertyType">
+                        <span className="form-label">Jenis Hartanah (Property Type)</span>
+                        <input
+                          id="field-ms-propertyType"
+                          type="text"
+                          className="form-input"
+                          placeholder={form.propertyType || 'cth. Kondominium / Rumah Teres'}
+                          value={form.translations?.ms?.propertyType ?? ''}
+                          onChange={(e) => updateMsField('propertyType', e.target.value)}
+                        />
+                      </label>
+
+                      <label className="form-group" htmlFor="field-ms-location">
+                        <span className="form-label">Lokasi (Location)</span>
+                        <input
+                          id="field-ms-location"
+                          type="text"
+                          className="form-input"
+                          placeholder={form.location || 'cth. Kuala Lumpur'}
+                          value={form.translations?.ms?.location ?? ''}
+                          onChange={(e) => updateMsField('location', e.target.value)}
+                        />
+                      </label>
+
+                      <label className="form-group" htmlFor="field-ms-address">
+                        <span className="form-label">Alamat (Address)</span>
+                        <input
+                          id="field-ms-address"
+                          type="text"
+                          className="form-input"
+                          placeholder={form.address || 'cth. Alamat penuh'}
+                          value={form.translations?.ms?.address ?? ''}
+                          onChange={(e) => updateMsField('address', e.target.value)}
+                        />
+                      </label>
+
+                      <label className="form-group" htmlFor="field-ms-priceBasis">
+                        <span className="form-label">Asas Harga (Price Basis)</span>
+                        <input
+                          id="field-ms-priceBasis"
+                          type="text"
+                          className="form-input"
+                          placeholder={form.priceBasis || 'cth. Harga bermula / Harga jualan'}
+                          value={form.translations?.ms?.priceBasis ?? ''}
+                          onChange={(e) => updateMsField('priceBasis', e.target.value)}
+                        />
+                      </label>
+
+                      <label className="form-group" htmlFor="field-ms-tenure">
+                        <span className="form-label">Pegangan (Tenure)</span>
+                        <input
+                          id="field-ms-tenure"
+                          type="text"
+                          className="form-input"
+                          placeholder={form.tenure || 'cth. Pegangan Bebas / Pajakan'}
+                          value={form.translations?.ms?.tenure ?? ''}
+                          onChange={(e) => updateMsField('tenure', e.target.value)}
+                        />
+                      </label>
+
+                      <label className="form-group" htmlFor="field-ms-furnishingStatus">
+                        <span className="form-label">Status Kelengkapan (Furnishing Status)</span>
+                        <input
+                          id="field-ms-furnishingStatus"
+                          type="text"
+                          className="form-input"
+                          placeholder={form.furnishingStatus || 'cth. Berperabot Penuh / Separa Perabot'}
+                          value={form.translations?.ms?.furnishingStatus ?? ''}
+                          onChange={(e) => updateMsField('furnishingStatus', e.target.value)}
+                        />
+                      </label>
+
+                      <label className="form-group" htmlFor="field-ms-availabilityStatus">
+                        <span className="form-label">Status Ketersediaan (Availability Status)</span>
+                        <input
+                          id="field-ms-availabilityStatus"
+                          type="text"
+                          className="form-input"
+                          placeholder={form.availabilityStatus || 'cth. Tersedia / Dijual'}
+                          value={form.translations?.ms?.availabilityStatus ?? ''}
+                          onChange={(e) => updateMsField('availabilityStatus', e.target.value)}
+                        />
+                      </label>
+                    </div>
+
+                    <label className="form-group" htmlFor="field-ms-facilities" style={{ marginTop: 'var(--space-md)' }}>
+                      <span className="form-label">Kemudahan (Facilities - setiap baris satu atau pisahkan dengan koma)</span>
+                      <textarea
+                        id="field-ms-facilities"
+                        className="form-input form-textarea"
+                        rows={3}
+                        placeholder="Kolam renang&#10;Gimnasium&#10;Kawalan keselamatan 24 jam"
+                        value={msFacilitiesText}
+                        onChange={(e) => setMsFacilitiesText(e.target.value)}
+                      />
+                    </label>
+
+                    <label className="form-group" htmlFor="field-ms-notes" style={{ marginTop: 'var(--space-md)' }}>
+                      <span className="form-label">Nota (Notes)</span>
+                      <textarea
+                        id="field-ms-notes"
+                        className="form-input form-textarea"
+                        rows={2}
+                        placeholder="Catatan tambahan dalam Bahasa Melayu..."
+                        value={form.translations?.ms?.notes ?? ''}
+                        onChange={(e) => updateMsField('notes', e.target.value)}
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {hasAttemptedSubmit && !valid.isValid && (

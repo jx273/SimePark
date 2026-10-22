@@ -49,7 +49,7 @@ export default function HomePage({
   importedRate,
   onImportRate,
 }: HomePageProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { user, isConfigured } = useAuth();
   const {
     savedIds,
@@ -74,9 +74,9 @@ export default function HomePage({
   const explorerProperties: PropertyWithCalculations[] = useMemo(
     () =>
       affordabilityInputs && affordabilityResult
-        ? enrichPropertiesWithCalculations(properties, affordabilityInputs, affordabilityResult)
+        ? enrichPropertiesWithCalculations(properties, affordabilityInputs, affordabilityResult, i18n.language)
         : toUncalculatedProperties(properties),
-    [properties, affordabilityInputs, affordabilityResult]
+    [properties, affordabilityInputs, affordabilityResult, i18n.language]
   );
 
   const comparisonProperties = useMemo(

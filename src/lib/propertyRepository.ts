@@ -84,7 +84,38 @@ function attachMedia(
   return rows.flatMap((row) => {
     const property = rowToProperty(row);
     if (!property) return [];
-    return [{ ...property, media: mediaByProperty.get(row.id) ?? [] }];
+
+    const canonical = bundledProperties.find((p) => p.id === row.id);
+    const dbTranslations = (property.translations as Property['translations']) ?? undefined;
+    const hasDbTranslations =
+      dbTranslations &&
+      (Boolean(dbTranslations.ms && Object.keys(dbTranslations.ms).length > 0) ||
+       Boolean(dbTranslations.zh && Object.keys(dbTranslations.zh).length > 0));
+
+    const effectiveTranslations: Property['translations'] = hasDbTranslations
+      ? {
+          ...(canonical?.translations ?? {}),
+          ...dbTranslations,
+          ms: { ...(canonical?.translations?.ms ?? {}), ...(dbTranslations?.ms ?? {}) },
+          zh: { ...(canonical?.translations?.zh ?? {}), ...(dbTranslations?.zh ?? {}) },
+        }
+      : (canonical?.translations ?? dbTranslations);
+
+    const dbMedia = mediaByProperty.get(row.id) ?? [];
+    const canonicalMedia = canonical?.media ?? [];
+    // Ensure every media from the JSON is attached even if Supabase property_media returned empty
+    const allMedia = dbMedia.length === 0
+      ? canonicalMedia
+      : [
+          ...dbMedia,
+          ...canonicalMedia.filter((cm) => !dbMedia.some((dm) => dm.url === cm.url || dm.externalUrl === cm.url)),
+        ];
+
+    return [{
+      ...property,
+      media: allMedia,
+      translations: effectiveTranslations,
+    }];
   });
 }
 

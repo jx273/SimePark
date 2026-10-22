@@ -122,6 +122,32 @@ export interface Property {
 
   /** Gallery and floor plans, ordered. May be empty. */
   media?: PropertyMedia[];
+
+  /** Optional localized translations for ms (Bahasa Melayu) and zh (Simplified Chinese). */
+  translations?: {
+    ms?: PropertyTranslation;
+    zh?: PropertyTranslation;
+  };
+}
+
+/** Localized field values for a property in a non-English language. */
+export interface PropertyTranslation {
+  propertyName?: string | null;
+  location?: string | null;
+  address?: string | null;
+  propertyType?: string | null;
+  priceBasis?: string | null;
+  tenure?: string | null;
+  furnishingStatus?: string | null;
+  availabilityStatus?: string | null;
+  facilities?: string[] | null;
+  notes?: string | null;
+  nearbyAmenity?: string | null;
+  nearestTransit?: string | null;
+  sourceType?: string | null;
+  confidenceStatus?: string | null;
+  imagePermission?: string | null;
+  landAreaUnit?: string | null;
 }
 
 /** Structured amenity, parsed from the source's semicolon-separated string. */

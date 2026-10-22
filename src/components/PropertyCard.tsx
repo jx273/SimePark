@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
-import { PropertyWithCalculations } from '../types/property';
+import { PropertyWithCalculations, coverImage } from '../types/property';
+import { isPubliclyDisplayableMedia } from '../lib/propertyAdapter';
 import { formatMYR, formatPercentage } from '../utils/mortgage';
 import { ILLUSTRATIVE_DSR_CAP } from '../types/affordability';
 import BudgetBadge, { ProvenanceBadge } from './BudgetBadge';
@@ -27,11 +28,34 @@ export default function PropertyCard({
   const { t } = useTranslation();
 
   const compareDisabled = !isCompared && comparisonFull;
+  const cover = coverImage(property);
 
   return (
     <article className="property-card card">
       {property.isExample && (
         <div className="property-card__demo-banner">{t('card.demoBanner')}</div>
+      )}
+
+      {cover && isPubliclyDisplayableMedia(cover) && (
+        <div
+          className="property-card__image-container"
+          onClick={() => onViewDetails(property)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onViewDetails(property);
+            }
+          }}
+        >
+          <img
+            src={cover.externalUrl ?? cover.url}
+            alt={cover.altText ?? cover.caption ?? property.propertyName}
+            className="property-card__image"
+            loading="lazy"
+          />
+        </div>
       )}
 
       <div className="property-card__content">

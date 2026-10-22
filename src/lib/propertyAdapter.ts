@@ -19,17 +19,20 @@ import type {
   Property,
   PropertyAmenity,
   PropertyMedia,
+  PropertyTranslation,
   PropertyType,
   PropertyMediaKind,
 } from '../types/property';
 import { PROPERTY_TYPES } from '../types/property';
 import sourceRecords from '../data/properties.source.json';
+import multilingualRecords from '../data/properties.multilingual.json';
 
 /** One record exactly as supplied in the source JSON. */
 export interface SourcePropertyRecord {
   id: string;
   propertyName: string;
   location: string;
+  address?: string | null;
   priceMYR: number | null;
   propertyType: string | null;
   isExample?: boolean;
@@ -71,6 +74,10 @@ export interface SourcePropertyRecord {
   imageUrls?: string[] | null;
   floorPlanUrls?: string[] | null;
   videoUrls?: string[] | null;
+  translations?: {
+    ms?: PropertyTranslation;
+    zh?: PropertyTranslation;
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -207,7 +214,7 @@ export function isPubliclyDisplayableMedia(
   }
 
   return isSafeMediaUrl(
-    media.sourceKind === 'external' ? media.externalUrl ?? media.url : media.url
+    media.watermarkedUrl ?? media.externalUrl ?? media.url ?? media.originalUrl
   );
 }
 
@@ -227,6 +234,10 @@ export function toPropertyType(value: string | null | undefined): PropertyType |
 export interface AdaptOptions {
   media?: PropertyMedia[];
   isPublished?: boolean;
+  translations?: {
+    ms?: PropertyTranslation;
+    zh?: PropertyTranslation;
+  };
 }
 
 function sourceMedia(
@@ -350,6 +361,7 @@ export function adaptSourceRecord(
     isPublished: options.isPublished ?? true,
     isExample: record.isExample === true,
     media: options.media ?? sourceMedia(record),
+    translations: options.translations ?? record.translations,
   };
 }
 
@@ -362,11 +374,72 @@ export function adaptSourceRecord(
  */
 export function buildBundledCatalog(): Property[] {
   const records = sourceRecords as unknown as SourcePropertyRecord[];
+  const multilingual = multilingualRecords as unknown as [
+    SourcePropertyRecord[],
+    SourcePropertyRecord[],
+    SourcePropertyRecord[]
+  ];
+
+  const msList = Array.isArray(multilingual[1]) ? multilingual[1] : [];
+  const zhList = Array.isArray(multilingual[2]) ? multilingual[2] : [];
+
+  const msMap = new Map(msList.map((p) => [p.id, p]));
+  const zhMap = new Map(zhList.map((p) => [p.id, p]));
 
   const properties: Property[] = [];
 
   for (const record of records) {
-    const adapted = adaptSourceRecord(record, { isPublished: true });
+    const msItem = msMap.get(record.id);
+    const zhItem = zhMap.get(record.id);
+
+    const translations: { ms?: PropertyTranslation; zh?: PropertyTranslation } = {
+      ...(msItem
+        ? {
+            ms: {
+              propertyName: asStringOrNull(msItem.propertyName),
+              location: asStringOrNull(msItem.location),
+              address: asStringOrNull(msItem.address),
+              propertyType: asStringOrNull(msItem.propertyType),
+              priceBasis: asStringOrNull(msItem.priceBasis),
+              availabilityStatus: asStringOrNull(msItem.availabilityStatus),
+              tenure: asStringOrNull(msItem.tenure),
+              furnishingStatus: asStringOrNull(msItem.furnishingStatus),
+              facilities: parseFacilities(msItem.facilityList),
+              notes: asStringOrNull(msItem.notes),
+              nearbyAmenity: asStringOrNull(msItem.nearbyAmenity),
+              nearestTransit: asStringOrNull(msItem.nearestTransit),
+              sourceType: asStringOrNull(msItem.sourceType),
+              confidenceStatus: asStringOrNull(msItem.confidenceStatus),
+              imagePermission: asStringOrNull(msItem.imagePermission),
+              landAreaUnit: asStringOrNull(msItem.landAreaUnit),
+            },
+          }
+        : {}),
+      ...(zhItem
+        ? {
+            zh: {
+              propertyName: asStringOrNull(zhItem.propertyName),
+              location: asStringOrNull(zhItem.location),
+              address: asStringOrNull(zhItem.address),
+              propertyType: asStringOrNull(zhItem.propertyType),
+              priceBasis: asStringOrNull(zhItem.priceBasis),
+              availabilityStatus: asStringOrNull(zhItem.availabilityStatus),
+              tenure: asStringOrNull(zhItem.tenure),
+              furnishingStatus: asStringOrNull(zhItem.furnishingStatus),
+              facilities: parseFacilities(zhItem.facilityList),
+              notes: asStringOrNull(zhItem.notes),
+              nearbyAmenity: asStringOrNull(zhItem.nearbyAmenity),
+              nearestTransit: asStringOrNull(zhItem.nearestTransit),
+              sourceType: asStringOrNull(zhItem.sourceType),
+              confidenceStatus: asStringOrNull(zhItem.confidenceStatus),
+              imagePermission: asStringOrNull(zhItem.imagePermission),
+              landAreaUnit: asStringOrNull(zhItem.landAreaUnit),
+            },
+          }
+        : {}),
+    };
+
+    const adapted = adaptSourceRecord(record, { isPublished: true, translations });
     if (adapted) properties.push(adapted);
   }
 

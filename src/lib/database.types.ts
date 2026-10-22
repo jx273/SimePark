@@ -60,6 +60,7 @@ export type PropertyRow = {
   notes: string | null;
   is_example: boolean;
   is_published: boolean;
+  translations?: Json | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -109,6 +110,7 @@ export type PropertyInsert = {
   notes?: string | null;
   is_example?: boolean;
   is_published?: boolean;
+  translations?: Json | null;
   created_by?: string | null;
 }
 

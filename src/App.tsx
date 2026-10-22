@@ -17,6 +17,7 @@ import AuthPage from './pages/AuthPage';
 import PrivacyPage from './pages/PrivacyPage';
 import NotFoundPage from './pages/NotFoundPage';
 import { fetchCatalog } from './lib/propertyRepository';
+import { localizeProperties } from './utils/propertyLocalization';
 import { enrichPropertiesWithCalculations } from './utils/propertyFilter';
 import { toUncalculatedProperties } from './utils/propertyFilter';
 import { calculateAffordability } from './utils/affordability';
@@ -62,7 +63,7 @@ function readFinancialInputs(): AffordabilityInputs | null {
  * explicitly and invites them to personalise it.
  */
 function AppShell() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const route = useRoute();
   const { comparisonIds } = useSelection();
   useScrollToTopOnRouteChange(route);
@@ -163,12 +164,17 @@ function AppShell() {
     };
   }, [route.name]);
 
+  const localizedCatalog = useMemo(
+    () => localizeProperties(catalog, i18n.language),
+    [catalog, i18n.language]
+  );
+
   const catalogWithCalculations: PropertyWithCalculations[] = useMemo(
     () =>
       userInputs && affordabilityResult
-        ? enrichPropertiesWithCalculations(catalog, userInputs, affordabilityResult)
-        : toUncalculatedProperties(catalog),
-    [catalog, userInputs, affordabilityResult]
+        ? enrichPropertiesWithCalculations(localizedCatalog, userInputs, affordabilityResult, i18n.language)
+        : toUncalculatedProperties(localizedCatalog),
+    [localizedCatalog, userInputs, affordabilityResult, i18n.language]
   );
 
   /** Find an enriched record by id, or null when it is not in the catalogue. */
@@ -179,8 +185,8 @@ function AppShell() {
   );
 
   const findRaw = useCallback(
-    (id: string): Property | null => catalog.find((property) => property.id === id) ?? null,
-    [catalog]
+    (id: string): Property | null => localizedCatalog.find((property) => property.id === id) ?? null,
+    [localizedCatalog]
   );
 
   const comparisonWithCalculations = useMemo(
@@ -201,7 +207,7 @@ function AppShell() {
       case 'home':
         return (
           <HomePage
-            properties={catalog}
+            properties={localizedCatalog}
             isLoading={isLoading}
             catalogError={catalogError}
             unpricedCount={unpricedCount}
@@ -236,7 +242,7 @@ function AppShell() {
       case 'dashboard':
         return (
           <DashboardPage
-            properties={catalog}
+            properties={localizedCatalog}
             onOpenProperty={openProperty}
             onLoadScenario={handleLoadScenario}
             affordabilityInputs={userInputs}
