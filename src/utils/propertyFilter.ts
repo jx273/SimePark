@@ -112,9 +112,12 @@ export function enrichPropertiesWithCalculations(
 
     // A property is affordable only when the monthly repayment fits the
     // calculated budget AND the required down payment is covered by real cash.
+    // If the buyer has enough cash to purchase outright (loanPrincipal is 0),
+    // the repayment is RM0 and always within budget.
     const isWithinMortgageBudget =
-      estimatedMonthlyMortgage > 0 &&
-      estimatedMonthlyMortgage <= result.estimatedMortgageBudget;
+      loanPrincipal === 0 ||
+      (estimatedMonthlyMortgage >= 0 &&
+        estimatedMonthlyMortgage <= result.estimatedMortgageBudget);
     const hasEnoughDownPayment = cashShortfall <= 0;
     const isAffordable = isWithinMortgageBudget && hasEnoughDownPayment;
 
@@ -446,6 +449,95 @@ export const DEFAULT_FILTERS: PropertyFilters = {
   affordableOnly: false,
 };
 
+export const PROPERTY_TYPE_SYNONYMS: Record<string, string[]> = {
+  'Apartment': ['Apartment', 'Pangsapuri', '公寓'],
+  'Condominium': ['Condominium', 'Kondominium', '高级公寓'],
+  'Terrace House': ['Terrace House', 'Rumah Teres', '排屋'],
+  'Semi-Detached': ['Semi-Detached', 'Rumah Berkembar', '半独立式洋房'],
+  'Bungalow': ['Bungalow', 'Banglo', '独立式洋房'],
+  'Flat': ['Flat', 'Rumah Pangsa (Flat)', 'Rumah Pangsa', '组屋'],
+  'Townhouse': ['Townhouse', 'Rumah Bandar', 'Rumah Bandar (Townhouse)', '联排别墅', '镇屋'],
+};
+
+/**
+ * Map any localized or translated property type name to its stable canonical English category.
+ */
+export function toCanonicalPropertyType(type: string | null | undefined): string | null {
+  if (!type || type === 'All') return null;
+  const clean = type.trim().toLowerCase();
+  for (const [canonical, synonyms] of Object.entries(PROPERTY_TYPE_SYNONYMS)) {
+    if (canonical.toLowerCase() === clean || synonyms.some((s) => s.toLowerCase() === clean)) {
+      return canonical;
+    }
+  }
+  return type;
+}
+
+/**
+ * Check whether a property's type matches the filter across languages.
+ */
+export function isPropertyTypeMatch(
+  propertyType: string | null | undefined,
+  filterType: string,
+  property?: Property
+): boolean {
+  if (!filterType || filterType === 'All') return true;
+  if (!propertyType) return false;
+  if (propertyType.trim().toLowerCase() === filterType.trim().toLowerCase()) return true;
+
+  // Compare canonical categories
+  const canonicalFilter = toCanonicalPropertyType(filterType);
+  const canonicalProp = toCanonicalPropertyType(propertyType);
+  if (canonicalFilter && canonicalProp && canonicalFilter === canonicalProp) {
+    return true;
+  }
+
+  // Check known translations/synonyms
+  for (const synonyms of Object.values(PROPERTY_TYPE_SYNONYMS)) {
+    const filterMatches = synonyms.some((s) => s.toLowerCase() === filterType.trim().toLowerCase());
+    if (filterMatches) {
+      if (synonyms.some((s) => s.toLowerCase() === propertyType.trim().toLowerCase())) {
+        return true;
+      }
+    }
+  }
+
+  // Also check property translation fields if available
+  if (property?.translations) {
+    const ms = property.translations.ms?.propertyType;
+    const zh = property.translations.zh?.propertyType;
+    if (ms && (ms.trim().toLowerCase() === filterType.trim().toLowerCase() || toCanonicalPropertyType(ms) === canonicalFilter)) return true;
+    if (zh && (zh.trim().toLowerCase() === filterType.trim().toLowerCase() || toCanonicalPropertyType(zh) === canonicalFilter)) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Translate a property type string to match the target interface language.
+ */
+export function getLocalizedPropertyType(
+  currentType: string,
+  targetLang: string
+): string {
+  if (!currentType || currentType === 'All') return 'All';
+  const normLang = targetLang?.toLowerCase().startsWith('zh')
+    ? 'zh'
+    : targetLang?.toLowerCase().startsWith('ms')
+    ? 'ms'
+    : 'en';
+
+  for (const [canonical, synonyms] of Object.entries(PROPERTY_TYPE_SYNONYMS)) {
+    if (synonyms.some((s) => s.toLowerCase() === currentType.trim().toLowerCase())) {
+      if (normLang === 'zh') return synonyms[2] || canonical;
+      if (normLang === 'ms') return synonyms[1] || canonical;
+      return canonical;
+    }
+  }
+
+  return currentType;
+}
+
 /**
  * Seed filters from submitted preferences.
  *
@@ -584,7 +676,7 @@ export function filterPropertiesWithMeta(
     }
 
     if (filters.propertyType && filters.propertyType !== 'All') {
-      if (property.propertyType !== filters.propertyType) return false;
+      if (!isPropertyTypeMatch(property.propertyType, filters.propertyType, property)) return false;
     }
 
     if (minBedrooms > 0 || maxBedrooms > 0) {

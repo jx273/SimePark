@@ -7,6 +7,7 @@ import {
   sortProperties,
   compareLocation,
   DEFAULT_FILTERS,
+  getLocalizedPropertyType,
 } from '../propertyFilter';
 import { calculateAffordability } from '../affordability';
 import { AffordabilityInputs } from '../../types/affordability';
@@ -103,6 +104,21 @@ describe('enrichPropertiesWithCalculations — down payment handling', () => {
     expect(property.loanPrincipal).toBe(0);
     expect(property.estimatedMonthlyMortgage).toBe(0);
     expect(property.cashShortfall).toBe(0);
+  });
+
+  it('marks outright cash purchases with RM0 mortgage as affordable, not overMonthlyBudget', () => {
+    // Regression test for Bug 2: When buyer has enough cash to buy outright,
+    // estimated monthly mortgage is RM0 and must not trigger "overMonthlyBudget".
+    const [property] = enrich(
+      [makeProperty({ id: 'cash-buy', priceMYR: 250000 })],
+      { downPayment: 300000, monthlyIncome: 3000, monthlyDebts: 500 }
+    );
+
+    expect(property.loanPrincipal).toBe(0);
+    expect(property.estimatedMonthlyMortgage).toBe(0);
+    expect(property.isAffordable).toBe(true);
+    expect(property.budgetStatus).toBe('affordable');
+    expect(property.matchExplanation).not.toContain('exceeds');
   });
 
   it('keeps every derived number finite for hostile input', () => {
@@ -277,6 +293,44 @@ describe('filterPropertiesWithMeta — filtering behaviour', () => {
       affordableOnly: true,
     });
     affordable.forEach((p) => expect(p.isAffordable).toBe(true));
+  });
+
+  it('filters property categories across languages without dropping results (Bug 3)', () => {
+    // Regression test for Bug 3: Selecting Apartment (or 公寓 / Pangsapuri)
+    // returns matching properties regardless of whether the filter is specified
+    // in English, Chinese, or Malay.
+    const enProperties = enrich([
+      makeProperty({ id: 'p1', propertyType: 'Apartment' }),
+      makeProperty({ id: 'p2', propertyType: 'Apartment' }),
+      makeProperty({ id: 'p3', propertyType: 'Condominium' }),
+    ]);
+
+    const zhProperties = enProperties.map((p) => ({
+      ...p,
+      propertyType: p.propertyType === 'Apartment' ? ('公寓' as any) : ('高级公寓' as any),
+      translations: {
+        zh: { propertyType: p.propertyType === 'Apartment' ? '公寓' : '高级公寓' },
+        ms: { propertyType: p.propertyType === 'Apartment' ? 'Pangsapuri' : 'Kondominium' },
+      },
+    }));
+
+    // Filter with English "Apartment" on Chinese properties
+    expect(filterProperties(zhProperties, { ...DEFAULT_FILTERS, propertyType: 'Apartment' })).toHaveLength(2);
+
+    // Filter with Chinese "公寓" on Chinese properties
+    expect(filterProperties(zhProperties, { ...DEFAULT_FILTERS, propertyType: '公寓' })).toHaveLength(2);
+
+    // Filter with Malay "Pangsapuri" on Chinese properties
+    expect(filterProperties(zhProperties, { ...DEFAULT_FILTERS, propertyType: 'Pangsapuri' })).toHaveLength(2);
+
+    // Filter with Chinese "公寓" on English properties
+    expect(filterProperties(enProperties, { ...DEFAULT_FILTERS, propertyType: '公寓' })).toHaveLength(2);
+
+    // Translation helper maps across languages correctly
+    expect(getLocalizedPropertyType('Apartment', 'zh')).toBe('公寓');
+    expect(getLocalizedPropertyType('Apartment', 'ms')).toBe('Pangsapuri');
+    expect(getLocalizedPropertyType('公寓', 'en')).toBe('Apartment');
+    expect(getLocalizedPropertyType('Pangsapuri', 'zh')).toBe('公寓');
   });
 
   it('leaves the convenience wrapper consistent with the meta version', () => {

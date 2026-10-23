@@ -53,6 +53,12 @@ export default function PropertyDetailPage({
     void recordActivity(user.id, 'viewed', rawProperty.id);
   }, [user, isConfigured, activityLogged, rawProperty]);
 
+  useEffect(() => {
+    setActivePhotoIndex(0);
+    setFailedMedia(new Set());
+    setLoadedMedia(new Set());
+  }, [propertyId]);
+
   if (isLoading) {
     return (
       <div className="container detail">
@@ -115,12 +121,6 @@ export default function PropertyDetailPage({
     (item) => item.kind === 'photo' && !isPubliclyDisplayableMedia(item)
   );
   const activePhoto = photos[activePhotoIndex] ?? null;
-
-  useEffect(() => {
-    setActivePhotoIndex(0);
-    setFailedMedia(new Set());
-    setLoadedMedia(new Set());
-  }, [propertyId]);
 
   const stepPhoto = (offset: number) => {
     if (photos.length < 2) return;
