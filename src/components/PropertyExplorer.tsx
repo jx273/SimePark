@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PropertyWithCalculations } from '../types/property';
 import { AffordabilityInputs } from '../types/affordability';
@@ -10,11 +10,23 @@ import {
   filterPropertiesWithMeta,
   sortProperties,
   availableFacilities,
+  getLocalizedPropertyType,
+  toCanonicalPropertyType,
 } from '../utils/propertyFilter';
 import PropertyCard from './PropertyCard';
 import './PropertyExplorer.css';
 
 const PropertyMap = lazy(() => import('./PropertyMap'));
+
+const GRID_ROWS = 3;
+
+export function getResponsiveColumns(
+  width = typeof window !== 'undefined' ? window.innerWidth : 1024
+): number {
+  if (width < 640) return 1;
+  if (width < 1024) return 2;
+  return 3;
+}
 
 interface PropertyExplorerProps {
   /** Enriched records. Empty before a personalized calculation exists. */
@@ -62,7 +74,7 @@ export default function PropertyExplorer({
   hasPersonalisedEstimate,
   onGoToAffordability,
 }: PropertyExplorerProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const savedState = useMemo(() => loadSavedExplorerState(), []);
 
   // Seed with saved state if available, otherwise submitted preferences
@@ -73,9 +85,23 @@ export default function PropertyExplorer({
   const [view, setView] = useState<'list' | 'map'>(() => savedState?.view ?? 'list');
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [page, setPage] = useState<number>(() => savedState?.page ?? 1);
-  const pageSize = 9;
+  const [columns, setColumns] = useState<number>(getResponsiveColumns);
+  const pageSize = columns * GRID_ROWS;
   const facilityDetailsRef = useRef<HTMLDetailsElement>(null);
+  const paginationRef = useRef<HTMLElement>(null);
+  const paginationAnchorRef = useRef<{ prevTop: number } | null>(null);
   const isFirstMount = useRef(true);
+
+  // Adapt columns to screen size changes
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleResize = () => {
+      const nextCols = getResponsiveColumns();
+      setColumns((current) => (current !== nextCols ? nextCols : current));
+    };
+    window.addEventListener('resize', handleResize, { passive: true });
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Persist explorer state so returning from details restores position
   useEffect(() => {
@@ -133,28 +159,19 @@ export default function PropertyExplorer({
     }));
   }, [preferences?.preferredLocation, preferences?.minBedrooms]);
 
-  // Dropdown options come from the full catalogue, not the filtered subset, so a
-  // filter can never remove its own options.
+  // Dropdown options come from the full catalogue, mapping each type to its stable canonical category
   const locations = useMemo(
     () => ['All', ...Array.from(new Set(properties.map((p) => p.location))).sort()],
     [properties]
   );
-  const propertyTypes = useMemo(
-    () => [
-      'All',
-      ...Array.from(
-        new Set(
-          properties
-            .map((property) => property.propertyType)
-            .filter(
-              (type): type is NonNullable<PropertyWithCalculations['propertyType']> =>
-                typeof type === 'string'
-            )
-        )
-      ).sort(),
-    ],
-    [properties]
-  );
+  const propertyTypes = useMemo(() => {
+    const canonicalSet = new Set<string>();
+    for (const property of properties) {
+      const canonical = toCanonicalPropertyType(property.propertyType);
+      if (canonical) canonicalSet.add(canonical);
+    }
+    return ['All', ...Array.from(canonicalSet).sort()];
+  }, [properties]);
   const facilities = useMemo(() => availableFacilities(properties), [properties]);
 
   const { properties: matching, hiddenUnknownBedrooms } = filterPropertiesWithMeta(
@@ -165,6 +182,31 @@ export default function PropertyExplorer({
   const filtered = sortProperties(matching, sortBy);
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const visibleProperties = filtered.slice((page - 1) * pageSize, page * pageSize);
+
+  const handlePageChange = (newPage: number) => {
+    if (paginationRef.current) {
+      paginationAnchorRef.current = {
+        prevTop: paginationRef.current.getBoundingClientRect().top,
+      };
+    }
+    setPage(newPage);
+  };
+
+  useLayoutEffect(() => {
+    if (!paginationAnchorRef.current || !paginationRef.current) return;
+    const { prevTop } = paginationAnchorRef.current;
+    paginationAnchorRef.current = null;
+
+    const currentTop = paginationRef.current.getBoundingClientRect().top;
+    const delta = currentTop - prevTop;
+    if (
+      Math.abs(delta) > 1 &&
+      typeof window !== 'undefined' &&
+      typeof window.scrollBy === 'function'
+    ) {
+      window.scrollBy({ top: delta, behavior: 'instant' as ScrollBehavior });
+    }
+  }, [page]);
 
   useEffect(() => {
     if (isFirstMount.current) {
@@ -279,12 +321,14 @@ export default function PropertyExplorer({
             <select
               id="filter-type"
               className="form-select"
-              value={filters.propertyType}
+              value={toCanonicalPropertyType(filters.propertyType) || filters.propertyType}
               onChange={(event) => change('propertyType', event.target.value)}
             >
-              {propertyTypes.map((type) => (
-                <option key={type} value={type}>
-                  {type === 'All' ? t('common.all') : type}
+              {propertyTypes.map((canonical) => (
+                <option key={canonical} value={canonical}>
+                  {canonical === 'All'
+                    ? t('common.all')
+                    : getLocalizedPropertyType(canonical, i18n.language)}
                 </option>
               ))}
             </select>
@@ -559,12 +603,16 @@ export default function PropertyExplorer({
         )}
 
         {view === 'list' && filtered.length > 0 && pageCount > 1 && (
-          <nav className="explorer__pagination" aria-label={t('explorer.pagination')}>
+          <nav
+            ref={paginationRef}
+            className="explorer__pagination"
+            aria-label={t('explorer.pagination')}
+          >
             <button
               type="button"
               className="btn btn--secondary btn--sm"
               disabled={page === 1}
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              onClick={() => handlePageChange(Math.max(1, page - 1))}
             >
               {t('explorer.previous')}
             </button>
@@ -575,7 +623,7 @@ export default function PropertyExplorer({
               type="button"
               className="btn btn--secondary btn--sm"
               disabled={page === pageCount}
-              onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+              onClick={() => handlePageChange(Math.min(pageCount, page + 1))}
             >
               {t('explorer.next')}
             </button>

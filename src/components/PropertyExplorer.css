@@ -190,8 +190,9 @@
 
 .explorer__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-lg);
+  align-items: stretch;
 }
 
 .explorer__pagination {
@@ -202,11 +203,19 @@
   margin-top: var(--space-xl);
 }
 
+@media (max-width: 1023px) {
+  .explorer__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 768px) {
   .explorer__filters {
     grid-template-columns: 1fr 1fr;
   }
+}
 
+@media (max-width: 639px) {
   .explorer__grid {
     grid-template-columns: 1fr;
   }

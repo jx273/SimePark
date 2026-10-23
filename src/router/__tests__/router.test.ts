@@ -39,6 +39,7 @@ describe('parseRoute', () => {
   it('reads a property id, including encoded characters', () => {
     expect(parseRoute('#/property/demo-007')).toEqual({ name: 'property', id: 'demo-007' });
     expect(parseRoute('#/property/a%20b')).toEqual({ name: 'property', id: 'a b' });
+    expect(parseRoute('/property/SP-001')).toEqual({ name: 'property', id: 'SP-001' });
   });
 
   it('treats a property route without an id as not found rather than home', () => {
